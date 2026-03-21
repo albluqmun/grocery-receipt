@@ -40,9 +40,17 @@ docker compose exec api alembic revision --autogenerate -m "description"
 docker compose exec api alembic upgrade head
 ```
 
+## Quality
+
+- Pre-commit hooks (ruff check + ruff format) vía poetry en la raíz del repo
+- CI con GitHub Actions en cada PR: lint + tests con PostgreSQL real
+- Instalar hooks: `poetry install && poetry run pre-commit install`
+
 ## Conventions
 
 - Idioma: español para strings de usuario, inglés para código
 - Python 3.12+, async en todo el backend
 - Ruff para linting y formateo (line-length=100)
 - Config vía variables de entorno (pydantic-settings)
+- Conventional commits: `feat:`, `fix:`, `chore:`, etc.
+- Ramas con prefijo: `feat/`, `fix/`, `chore/`
