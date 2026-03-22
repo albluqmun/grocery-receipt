@@ -54,3 +54,43 @@ docker compose exec api alembic upgrade head
 - Config vía variables de entorno (pydantic-settings)
 - Conventional commits: `feat:`, `fix:`, `chore:`, etc.
 - Ramas con prefijo: `feat/`, `fix/`, `chore/`
+
+## Code Patterns
+
+### Models (`app/models/{entity}.py`)
+
+- Un modelo por fichero, hereda de `UUIDPrimaryKeyMixin, TimestampMixin, Base`
+- SQLAlchemy 2.0 con `Mapped` type hints, tabla en plural snake_case
+- Relaciones con `lazy="selectin"` y `back_populates`
+- Decimales: `Numeric(10, 2)` para dinero, `Numeric(10, 3)` para cantidades
+
+### Schemas (`app/schemas/{entity}.py`)
+
+- Tres schemas por entidad: `{Entity}Create`, `{Entity}Update`, `{Entity}Read`
+- Update: todos los campos opcionales con `Field(default=None)`
+- Read: incluye `model_config = ConfigDict(from_attributes=True)`
+- Paginación genérica: `PaginatedResponse[T]` (en `schemas/pagination.py`)
+
+### Services (`app/services/{entity}.py`)
+
+- Funciones libres async (no clases): `create`, `get_by_id`, `get_list`, `update`, `delete`
+- `get_list` retorna `tuple[list[Entity], int]` (items + total)
+- Usan `db.flush()` (nunca `db.commit()`, eso lo hace `get_db()`)
+- Update usa `data.model_dump(exclude_unset=True)` para parciales
+- Retornan `None`/`False` si no existe; el router decide el HTTP status
+
+### Routers (`app/api/{entities}.py`)
+
+- Fichero en plural, importa servicio como `from app.services import entity as entity_service`
+- REST: POST(201), GET(200), PATCH(200), DELETE(204)
+- Paginación via `Query(skip)` + `Query(limit)` con `PaginatedResponse`
+- Errores: helpers `not_found()` y `conflict()` de `app.api.exceptions`
+- `IntegrityError` se captura en el router y lanza `conflict()`
+- DB inyectada con `Depends(get_db)`
+
+### Tests (`tests/test_{entities}.py`)
+
+- Tests de integración con BD real (nunca mocks para la BD)
+- Fixtures en `conftest.py`: `engine`, `db_session`, `client` (con override de `get_db`)
+- Helper `_create_{entity}(db, **kwargs)` por fichero para datos de test
+- Cubrir: create, create duplicado/conflict, list, get, get 404, update, update 404, delete, delete 404, delete con dependencias (409)
