@@ -9,6 +9,8 @@ class TicketCreate(BaseModel):
     date: datetime.date
     supermarket_id: uuid.UUID
     total: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    invoice_number: str | None = None
+    pdf_hash: str | None = None
 
 
 class TicketUpdate(BaseModel):

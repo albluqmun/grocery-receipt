@@ -8,6 +8,13 @@ dist/
 .pytest_cache/
 .ruff_cache/
 
+# Coverage
+.coverage
+htmlcov/
+
+# PDFs
+*.pdf
+
 # Environment
 .env
 
