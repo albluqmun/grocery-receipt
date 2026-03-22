@@ -16,6 +16,7 @@ dependencies = [
 dev = [
     "pytest>=8.0,<9",
     "pytest-asyncio>=0.25,<1",
+    "pytest-cov>=6.0,<7",
     "httpx>=0.28,<1",
     "ruff>=0.11,<1",
 ]
@@ -36,4 +37,13 @@ select = ["E", "F", "I", "N", "UP"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+concurrency = ["greenlet"]
+omit = [
+    "app/schemas/line_item.py",
+    "app/services/line_item.py",
+]
