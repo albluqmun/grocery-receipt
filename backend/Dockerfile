@@ -7,8 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
-# Instala también dependencias de desarrollo (pytest, ruff, etc.)
-# Para producción se usaría un multi-stage build con solo `pip install .`
 RUN pip install --no-cache-dir ".[dev]"
 
 COPY . .
