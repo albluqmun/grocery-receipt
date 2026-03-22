@@ -48,7 +48,7 @@ docker compose exec api alembic upgrade head
 
 ## Conventions
 
-- Idioma: español para strings de usuario, inglés para código
+- Idioma: español para strings de usuario (HTTPException detail), inglés para todo lo demás (código, logs, docstrings, comentarios)
 - Python 3.12+, async en todo el backend
 - Ruff para linting y formateo (line-length=100)
 - Config vía variables de entorno (pydantic-settings)

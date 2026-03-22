@@ -40,6 +40,7 @@ jobs:
         working-directory: backend
     env:
       DATABASE_URL: postgresql+asyncpg://grocery:grocery_dev@localhost:5432/grocery_receipt
+      SECRET_KEY: ci-test-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
