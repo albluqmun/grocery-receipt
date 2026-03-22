@@ -5,9 +5,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from alembic import context
 from app.core.config import settings
 from app.core.database import Base
-
-# Import all models here so Base.metadata is populated
-# from app.models import ...  # uncomment as models are added
+from app.models import *  # noqa: F401, F403
 
 target_metadata = Base.metadata
 
