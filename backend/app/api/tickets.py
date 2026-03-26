@@ -3,24 +3,26 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from google.genai.errors import APIError as GeminiAPIError
-from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import require_gemini
 from app.api.exceptions import not_found
-from app.core.config import settings
 from app.core.database import get_db
 from app.schemas.pagination import PaginatedResponse
 from app.schemas.receipt import ReceiptUploadResponse
 from app.schemas.ticket import TicketRead
 from app.services import ticket as ticket_service
-from app.services.gemini import extract_receipt_from_pdf
-from app.services.receipt import compute_pdf_hash, find_by_pdf_hash, process_extracted_receipt
+from app.services.gemini import ReceiptParseError, extract_receipt_from_pdf
+from app.services.receipt import (
+    compute_pdf_hash,
+    find_by_pdf_hash,
+    process_extracted_receipt,
+    validate_pdf_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
-
-MAX_PDF_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 @router.post(
@@ -32,6 +34,7 @@ MAX_PDF_SIZE = 10 * 1024 * 1024  # 10 MB
 async def upload_ticket(
     file: UploadFile,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_gemini),
 ):
     if file.content_type != "application/pdf":
         raise HTTPException(
@@ -39,42 +42,21 @@ async def upload_ticket(
             detail="Solo se aceptan archivos PDF",
         )
 
-    if not settings.gemini_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Servicio de extracción no configurado (falta GEMINI_API_KEY)",
-        )
-
     pdf_bytes = await file.read()
 
-    if not pdf_bytes.startswith(b"%PDF"):
+    validation_error = validate_pdf_bytes(pdf_bytes)
+    if validation_error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="El archivo no es un PDF válido",
-        )
-
-    if len(pdf_bytes) > MAX_PDF_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="El archivo excede el tamaño máximo de 10 MB",
+            detail=validation_error,
         )
 
     pdf_hash = compute_pdf_hash(pdf_bytes)
 
-    # Fast path: skip Gemini if exact same PDF was already processed
     existing = await find_by_pdf_hash(db, pdf_hash)
     if existing:
         logger.info("Duplicate PDF (hash match), existing ticket: %s", existing.id)
-        return ReceiptUploadResponse(
-            ticket_id=existing.id,
-            supermarket=existing.supermarket.name,
-            date=existing.date,
-            total=existing.total,
-            products_created=0,
-            products_matched=0,
-            line_items_count=0,
-            duplicate=True,
-        )
+        return ReceiptUploadResponse.duplicate_from(existing)
 
     try:
         extracted = await extract_receipt_from_pdf(pdf_bytes)
@@ -84,7 +66,7 @@ async def upload_ticket(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Error en el servicio de extracción. Inténtelo de nuevo más tarde.",
         )
-    except (ValidationError, ValueError):
+    except ReceiptParseError:
         logger.exception("Failed to parse Gemini response")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

@@ -15,6 +15,12 @@ htmlcov/
 # PDFs
 *.pdf
 
+# Credentials
+credentials/
+
+# Backups
+backups/
+
 # Environment
 .env
 

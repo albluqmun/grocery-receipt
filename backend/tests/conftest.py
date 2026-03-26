@@ -1,4 +1,7 @@
+import datetime
+import uuid
 from collections.abc import AsyncGenerator
+from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -10,6 +13,35 @@ from app.main import app
 
 # Import all models so Base.metadata knows about them
 from app.models import Category, LineItem, Product, Supermarket, Ticket  # noqa: F401
+from app.schemas.receipt import ExtractedLineItem, ExtractedReceipt
+
+
+def make_extracted_receipt(
+    invoice_number: str | None = None,
+    supermarket_name: str = "MERCADONA",
+    total: Decimal = Decimal("42.50"),
+) -> ExtractedReceipt:
+    """Build a mock ExtractedReceipt for tests."""
+    return ExtractedReceipt(
+        supermarket_name=supermarket_name,
+        supermarket_locality="TOMARES",
+        invoice_number=invoice_number,
+        date=datetime.date(2026, 3, 21),
+        total=total,
+        line_items=[
+            ExtractedLineItem(
+                product_name="LECHE ENTERA",
+                quantity=Decimal("2"),
+                unit_price=Decimal("1.10"),
+                line_total=Decimal("2.20"),
+            ),
+        ],
+    )
+
+
+def unique_pdf() -> bytes:
+    """Generate a unique PDF payload to avoid hash-based dedup between tests."""
+    return b"%PDF-1.4 fake " + uuid.uuid4().hex.encode()
 
 
 @pytest.fixture(scope="session")

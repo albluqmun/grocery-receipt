@@ -1,34 +1,40 @@
 import logging
+import re
 
 from google import genai
 from google.genai import types
+from pydantic import ValidationError
 
 from app.core.config import settings
 from app.schemas.receipt import ExtractedReceipt
 
+
+class ReceiptParseError(ValueError):
+    """Raised when Gemini's response cannot be parsed into ExtractedReceipt."""
+
+
 logger = logging.getLogger(__name__)
 
 EXTRACTION_PROMPT = (
-    "Extract all data from this supermarket receipt. "
-    "Return a JSON object with these fields:\n"
-    "- supermarket_name: name of the supermarket chain (e.g. 'MERCADONA')\n"
-    "- supermarket_locality: city/town from the address, or null\n"
-    "- invoice_number: the receipt/invoice identifier "
-    "(e.g. 'FACTURA SIMPLIFICADA: 3823-014-675403' → '3823-014-675403'), or null\n"
-    "- date: receipt date in YYYY-MM-DD format\n"
-    "- total: total amount in euros\n"
-    "- line_items: array of purchased items, each with:\n"
-    "  - product_name: product name exactly as shown on receipt\n"
-    "  - quantity: number of units, or weight in kg for weighted products\n"
-    "  - unit_price: price per unit, or price per kg for weighted products\n"
-    "  - line_total: total price for this line\n\n"
-    "Rules for line items:\n"
-    "- For products sold by weight (showing kg and €/kg), "
-    "use the weight as quantity and the per-kg price as unit_price.\n"
-    "- For products sold by unit, use the count as quantity "
-    "and line_total divided by quantity as unit_price.\n"
-    "- Do NOT include parking, discounts, or non-product lines.\n"
-    "- Use decimal numbers for all numeric values (not strings)."
+    "Extract data from this Spanish supermarket receipt as JSON.\n\n"
+    "Header fields:\n"
+    "- supermarket_name: chain name (e.g. MERCADONA)\n"
+    "- supermarket_locality: city from the address, or null\n"
+    "- invoice_number: code after 'FACTURA SIMPLIFICADA:' "
+    "(e.g. '3923-014-675403'), or null\n"
+    "- date: YYYY-MM-DD\n"
+    "- total: the TOTAL (€) amount (not subtotals, not tax breakdown)\n\n"
+    "Line items — by-unit and by-weight examples:\n\n"
+    '  "1 QUESO CURADO  4,78"\n'
+    '  → {"product_name":"QUESO CURADO","quantity":1,'
+    '"unit_price":4.78,"line_total":4.78}\n\n'
+    '  "1 BANANA / 1,168 kg  1,45 €/kg  1,68"\n'
+    '  → {"product_name":"BANANA","quantity":1.168,'
+    '"unit_price":1.45,"line_total":1.68}\n\n'
+    "Rules:\n"
+    "- All numeric values: plain numbers, dot decimal separator "
+    '(1.168 not "1,168" or "1.168 kg").\n'
+    "- Exclude parking, discounts, coupons, and non-product lines."
 )
 
 
@@ -40,6 +46,23 @@ def _get_client() -> genai.Client:
     if _client is None:
         _client = genai.Client(api_key=settings.gemini_api_key)
     return _client
+
+
+_DECIMAL_COMMA_RE = re.compile(r'"(\d+),(\d+)"')
+_UNIT_SUFFIX_RE = re.compile(r'"(\d+(?:\.\d+)?)\s+(?:kg|€/kg|g|ml|l|ud)"', re.IGNORECASE)
+
+
+def _sanitize_numeric_values(raw: str) -> str:
+    """Fix common Gemini quirks in numeric JSON string values.
+
+    - European decimal commas: "22,74" → "22.74"
+    - Unit suffixes: "1.168 kg" → "1.168"
+    """
+    fixed = _DECIMAL_COMMA_RE.sub(r'"\1.\2"', raw)
+    fixed = _UNIT_SUFFIX_RE.sub(r'"\1"', fixed)
+    if fixed != raw:
+        logger.debug("Sanitized numeric values in Gemini response")
+    return fixed
 
 
 async def extract_receipt_from_pdf(pdf_bytes: bytes) -> ExtractedReceipt:
@@ -59,7 +82,12 @@ async def extract_receipt_from_pdf(pdf_bytes: bytes) -> ExtractedReceipt:
         ),
     )
 
-    result = ExtractedReceipt.model_validate_json(response.text)
+    raw_json = _sanitize_numeric_values(response.text)
+    try:
+        result = ExtractedReceipt.model_validate_json(raw_json)
+    except ValidationError as exc:
+        logger.error("Failed to parse Gemini response: %s\nRaw JSON: %s", exc, raw_json)
+        raise ReceiptParseError(str(exc)) from exc
     logger.info(
         "Gemini extracted: supermarket=%s, date=%s, total=%s, line_items=%d",
         result.supermarket_name,
