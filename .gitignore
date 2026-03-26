@@ -18,6 +18,9 @@ htmlcov/
 # Credentials
 credentials/
 
+# Backups
+backups/
+
 # Environment
 .env
 
