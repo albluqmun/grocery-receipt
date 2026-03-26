@@ -1,10 +1,17 @@
 import logging
+import re
 
 from google import genai
 from google.genai import types
+from pydantic import ValidationError
 
 from app.core.config import settings
 from app.schemas.receipt import ExtractedReceipt
+
+
+class ReceiptParseError(ValueError):
+    """Raised when Gemini's response cannot be parsed into ExtractedReceipt."""
+
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +49,21 @@ def _get_client() -> genai.Client:
     return _client
 
 
+_DECIMAL_COMMA_RE = re.compile(r'"(\d+),(\d+)"')
+
+
+def _fix_decimal_commas(raw: str) -> str:
+    """Replace European decimal commas with dots in JSON numeric string values.
+
+    Gemini sometimes returns '\"22,74\"' instead of '\"22.74\"' for Spanish receipts.
+    Only touches quoted strings that look like decimal numbers (e.g. "1,45", "0,416").
+    """
+    fixed = _DECIMAL_COMMA_RE.sub(r'"\1.\2"', raw)
+    if fixed != raw:
+        logger.debug("Fixed European decimal commas in Gemini response")
+    return fixed
+
+
 async def extract_receipt_from_pdf(pdf_bytes: bytes) -> ExtractedReceipt:
     """Send a receipt PDF to Gemini and return structured extraction."""
     logger.info("Sending PDF (%d bytes) to Gemini model=%s", len(pdf_bytes), settings.gemini_model)
@@ -59,7 +81,12 @@ async def extract_receipt_from_pdf(pdf_bytes: bytes) -> ExtractedReceipt:
         ),
     )
 
-    result = ExtractedReceipt.model_validate_json(response.text)
+    raw_json = _fix_decimal_commas(response.text)
+    try:
+        result = ExtractedReceipt.model_validate_json(raw_json)
+    except ValidationError as exc:
+        logger.error("Failed to parse Gemini response: %s\nRaw JSON: %s", exc, raw_json)
+        raise ReceiptParseError(str(exc)) from exc
     logger.info(
         "Gemini extracted: supermarket=%s, date=%s, total=%s, line_items=%d",
         result.supermarket_name,

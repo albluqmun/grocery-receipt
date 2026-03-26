@@ -17,6 +17,7 @@ class Ticket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     total: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     invoice_number: Mapped[str | None] = mapped_column(String(100), unique=True)
     pdf_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    drive_file_id: Mapped[str | None] = mapped_column(String(100), unique=True)
 
     supermarket = relationship("Supermarket", lazy="selectin")
     lines = relationship(

@@ -17,6 +17,17 @@ from app.services import ticket as ticket_service
 
 logger = logging.getLogger(__name__)
 
+MAX_PDF_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def validate_pdf_bytes(pdf_bytes: bytes) -> str | None:
+    """Return an error message if pdf_bytes is not a valid PDF, or None if OK."""
+    if not pdf_bytes.startswith(b"%PDF"):
+        return "El archivo no es un PDF válido"
+    if len(pdf_bytes) > MAX_PDF_SIZE:
+        return "El archivo excede el tamaño máximo de 10 MB"
+    return None
+
 
 def compute_pdf_hash(pdf_bytes: bytes) -> str:
     return hashlib.sha256(pdf_bytes).hexdigest()
@@ -25,6 +36,16 @@ def compute_pdf_hash(pdf_bytes: bytes) -> str:
 async def find_by_pdf_hash(db: AsyncSession, pdf_hash: str) -> Ticket | None:
     result = await db.execute(select(Ticket).where(Ticket.pdf_hash == pdf_hash))
     return result.scalar_one_or_none()
+
+
+async def get_existing_drive_file_ids(db: AsyncSession, candidate_ids: list[str]) -> set[str]:
+    """Return the subset of candidate_ids that already exist in the database."""
+    if not candidate_ids:
+        return set()
+    result = await db.execute(
+        select(Ticket.drive_file_id).where(Ticket.drive_file_id.in_(candidate_ids))
+    )
+    return {row[0] for row in result.all()}
 
 
 async def _find_by_invoice_number(db: AsyncSession, invoice_number: str) -> Ticket | None:
@@ -67,7 +88,10 @@ async def _resolve_products(
 
 
 async def process_extracted_receipt(
-    db: AsyncSession, data: ExtractedReceipt, pdf_hash: str
+    db: AsyncSession,
+    data: ExtractedReceipt,
+    pdf_hash: str,
+    drive_file_id: str | None = None,
 ) -> ReceiptUploadResponse:
     if data.invoice_number:
         duplicate = await _find_by_invoice_number(db, data.invoice_number)
@@ -75,16 +99,7 @@ async def process_extracted_receipt(
             logger.info(
                 "Duplicate ticket (invoice_number=%s): %s", data.invoice_number, duplicate.id
             )
-            return ReceiptUploadResponse(
-                ticket_id=duplicate.id,
-                supermarket=data.supermarket_name,
-                date=duplicate.date,
-                total=duplicate.total,
-                products_created=0,
-                products_matched=0,
-                line_items_count=0,
-                duplicate=True,
-            )
+            return ReceiptUploadResponse.duplicate_from(duplicate)
 
     supermarket = await _find_or_create_supermarket(
         db, data.supermarket_name, data.supermarket_locality
@@ -98,6 +113,7 @@ async def process_extracted_receipt(
             total=data.total,
             invoice_number=data.invoice_number,
             pdf_hash=pdf_hash,
+            drive_file_id=drive_file_id,
         ),
     )
 

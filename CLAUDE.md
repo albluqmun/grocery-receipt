@@ -35,10 +35,17 @@ docker compose exec api pytest tests/test_health.py -v  # test individual
 docker compose exec api ruff check app/
 docker compose exec api ruff format app/
 
-# Migraciones
-docker compose exec api alembic revision --autogenerate -m "description"
-docker compose exec api alembic upgrade head
+# Reset BD (borrar volumen y recrear tablas al arrancar)
+docker compose down -v && docker compose up --build
+
+# Generar migración incremental (cuando el schema estabilice para producción)
+docker compose exec api python -m alembic revision --autogenerate -m "description"
 ```
+
+> **Schema management:** En desarrollo, las tablas se crean con
+> `Base.metadata.create_all()` + `alembic stamp head` al arrancar (lifespan).
+> Alembic está configurado para migraciones incrementales futuras en producción.
+> Para cambios de schema en dev, `docker compose down -v` y reiniciar.
 
 ## Quality
 
