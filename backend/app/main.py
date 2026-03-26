@@ -2,10 +2,10 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+from alembic.config import Config
 from fastapi import FastAPI
 
 from alembic import command
-from alembic.config import Config
 from app.api.categories import router as categories_router
 from app.api.google_drive import router as google_drive_router
 from app.api.health import router as health_router
