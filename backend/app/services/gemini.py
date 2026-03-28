@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 
 EXTRACTION_PROMPT = (
     "Extract data from this Spanish supermarket receipt as JSON.\n\n"
+    "CRITICAL — numeric format rules (apply to ALL numeric fields):\n"
+    "- Output ONLY plain numbers with dot decimal separator.\n"
+    "- NEVER include units (kg, €/kg, g, ml, l, ud) in any value.\n"
+    "- NEVER use comma as decimal separator.\n"
+    "- Convert weight strings: '0,166 kg' → 0.166, '1,84 €/kg' → 1.84\n\n"
     "Header fields:\n"
     "- supermarket_name: chain name (e.g. MERCADONA)\n"
     "- supermarket_locality: city from the address, or null\n"
@@ -24,16 +29,20 @@ EXTRACTION_PROMPT = (
     "(e.g. '3923-014-675403'), or null\n"
     "- date: YYYY-MM-DD\n"
     "- total: the TOTAL (€) amount (not subtotals, not tax breakdown)\n\n"
-    "Line items — by-unit and by-weight examples:\n\n"
-    '  "1 QUESO CURADO  4,78"\n'
+    "Line items — examples:\n\n"
+    "By-unit: '1 QUESO CURADO  4,78'\n"
     '  → {"product_name":"QUESO CURADO","quantity":1,'
     '"unit_price":4.78,"line_total":4.78}\n\n'
-    '  "1 BANANA / 1,168 kg  1,45 €/kg  1,68"\n'
+    "By-weight: '1 BANANA / 1,168 kg  1,45 €/kg  1,68'\n"
+    "  For by-weight items, extract the kg amount as quantity "
+    "and the €/kg rate as unit_price, both as plain numbers:\n"
     '  → {"product_name":"BANANA","quantity":1.168,'
     '"unit_price":1.45,"line_total":1.68}\n\n'
-    "Rules:\n"
-    "- All numeric values: plain numbers, dot decimal separator "
-    '(1.168 not "1,168" or "1.168 kg").\n'
+    "WRONG (never do this):\n"
+    '  {"quantity":"0,166 kg","unit_price":"1,84 €/kg"}\n'
+    "RIGHT:\n"
+    '  {"quantity":0.166,"unit_price":1.84}\n\n'
+    "Other rules:\n"
     "- Exclude parking, discounts, coupons, and non-product lines."
 )
 
@@ -48,18 +57,21 @@ def _get_client() -> genai.Client:
     return _client
 
 
+_UNIT_SUFFIX_RE = re.compile(r'"(\d+(?:[.,]\d+)?)\s*(?:kg|€/kg|g|ml|l|ud)"', re.IGNORECASE)
 _DECIMAL_COMMA_RE = re.compile(r'"(\d+),(\d+)"')
-_UNIT_SUFFIX_RE = re.compile(r'"(\d+(?:\.\d+)?)\s+(?:kg|€/kg|g|ml|l|ud)"', re.IGNORECASE)
 
 
 def _sanitize_numeric_values(raw: str) -> str:
     """Fix common Gemini quirks in numeric JSON string values.
 
+    - Unit suffixes (may include comma decimals): "0,166 kg" → "0.166"
     - European decimal commas: "22,74" → "22.74"
-    - Unit suffixes: "1.168 kg" → "1.168"
+
+    Unit suffixes are stripped first so that "0,166 kg" becomes "0,166",
+    then the comma-to-dot pass converts it to "0.166".
     """
-    fixed = _DECIMAL_COMMA_RE.sub(r'"\1.\2"', raw)
-    fixed = _UNIT_SUFFIX_RE.sub(r'"\1"', fixed)
+    fixed = _UNIT_SUFFIX_RE.sub(r'"\1"', raw)
+    fixed = _DECIMAL_COMMA_RE.sub(r'"\1.\2"', fixed)
     if fixed != raw:
         logger.debug("Sanitized numeric values in Gemini response")
     return fixed
