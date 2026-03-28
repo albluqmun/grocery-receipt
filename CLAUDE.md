@@ -38,14 +38,14 @@ docker compose exec api ruff format app/
 # Reset BD (borrar volumen y recrear tablas al arrancar)
 docker compose down -v && docker compose up --build
 
-# Generar migración incremental (cuando el schema estabilice para producción)
+# Generar migración incremental
 docker compose exec api python -m alembic revision --autogenerate -m "description"
 ```
 
-> **Schema management:** En desarrollo, las tablas se crean con
-> `Base.metadata.create_all()` + `alembic stamp head` al arrancar (lifespan).
-> Alembic está configurado para migraciones incrementales futuras en producción.
-> Para cambios de schema en dev, `docker compose down -v` y reiniciar.
+> **Schema management:** Alembic es la fuente de verdad del schema.
+> El lifespan ejecuta `alembic upgrade head` al arrancar, aplicando migraciones pendientes.
+> Para cambios de schema: generar migración con `--autogenerate`, o en dev
+> `docker compose down -v` y reiniciar para recrear desde cero.
 
 ## Quality
 
