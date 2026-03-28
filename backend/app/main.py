@@ -13,25 +13,21 @@ from app.api.products import router as products_router
 from app.api.supermarkets import router as supermarkets_router
 from app.api.tickets import router as tickets_router
 from app.core.config import settings
-from app.core.database import Base, engine
-from app.models import Category, LineItem, Product, Supermarket, Ticket  # noqa: F401
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def _stamp_alembic_head() -> None:
-    """Tell Alembic the DB is at the latest revision (no migrations executed)."""
+def _run_migrations() -> None:
+    """Run Alembic migrations to ensure the database schema is up to date."""
     cfg = Config("alembic.ini")
-    command.stamp(cfg, "head")
+    command.upgrade(cfg, "head")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await asyncio.to_thread(_stamp_alembic_head)
-    logger.info("Database tables verified")
+    await asyncio.to_thread(_run_migrations)
+    logger.info("Database migrations applied")
     yield
 
 
