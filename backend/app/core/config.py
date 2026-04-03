@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://grocery:grocery_dev@db:5432/grocery_receipt"
+    database_url_test: str = "postgresql+asyncpg://grocery:grocery_dev@db:5432/grocery_receipt_test"
     secret_key: str
     debug: bool = False
     gemini_api_key: str = ""

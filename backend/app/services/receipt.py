@@ -14,6 +14,7 @@ from app.schemas.ticket import TicketCreate
 from app.services import line_item as line_item_service
 from app.services import supermarket as supermarket_service
 from app.services import ticket as ticket_service
+from app.services.enrichment import enrich_products
 
 logger = logging.getLogger(__name__)
 
@@ -132,12 +133,30 @@ async def process_extracted_receipt(
             ),
         )
 
+    # Collect newly created products for enrichment
+    new_products = [
+        products_map[name]
+        for name in dict.fromkeys(product_names)
+        if products_map[name].off_synced_at is None
+    ]
+
+    products_enriched = 0
+    if new_products:
+        try:
+            enrichment_result = await enrich_products(
+                db, new_products, supermarket_hint=data.supermarket_name
+            )
+            products_enriched = enrichment_result.enriched
+        except Exception:
+            logger.warning("Enrichment failed for ticket %s, continuing", ticket.id, exc_info=True)
+
     logger.info(
-        "Ticket %s saved: %d new products, %d matched, %d line items",
+        "Ticket %s saved: %d new products, %d matched, %d line items, %d enriched",
         ticket.id,
         products_created,
         products_matched,
         len(data.line_items),
+        products_enriched,
     )
     return ReceiptUploadResponse(
         ticket_id=ticket.id,
@@ -147,4 +166,5 @@ async def process_extracted_receipt(
         products_created=products_created,
         products_matched=products_matched,
         line_items_count=len(data.line_items),
+        products_enriched=products_enriched,
     )

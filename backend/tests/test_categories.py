@@ -2,10 +2,9 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category import Category
+from app.models.product import Product, product_categories
 from app.schemas.category import CategoryCreate
-from app.schemas.product import ProductCreate
 from app.services import category as category_service
-from app.services import product as product_service
 
 BASE = "/api/v1/categories"
 
@@ -82,9 +81,14 @@ async def test_delete_not_found(client: AsyncClient):
 
 
 async def test_delete_with_products(client: AsyncClient, db_session: AsyncSession):
-    """Deleting a category that has products should return 409."""
+    """Deleting a category with M2M products succeeds (CASCADE removes junction rows)."""
     cat = await _create_category(db_session)
-    await product_service.create(db_session, ProductCreate(name="Leche", category_id=cat.id))
+    product = Product(name="Leche")
+    db_session.add(product)
+    await db_session.flush()
+    await db_session.execute(
+        product_categories.insert().values(product_id=product.id, category_id=cat.id)
+    )
     await db_session.commit()
     resp = await client.delete(f"{BASE}/{cat.id}")
-    assert resp.status_code == 409
+    assert resp.status_code == 204

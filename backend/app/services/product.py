@@ -11,6 +11,7 @@ async def create(db: AsyncSession, data: ProductCreate) -> Product:
     product = Product(**data.model_dump())
     db.add(product)
     await db.flush()
+    await db.refresh(product)
     return product
 
 

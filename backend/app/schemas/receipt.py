@@ -39,6 +39,7 @@ class ReceiptUploadResponse(BaseModel):
     products_created: int = Field(examples=[26])
     products_matched: int = Field(examples=[0])
     line_items_count: int = Field(examples=[26])
+    products_enriched: int = Field(default=0, examples=[5])
     duplicate: bool = False
 
     @staticmethod

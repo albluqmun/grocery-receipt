@@ -1,11 +1,14 @@
+import json
 import logging
 import re
 
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError as GeminiAPIError
 from pydantic import ValidationError
 
 from app.core.config import settings
+from app.schemas.enrichment import OFFCandidate
 from app.schemas.receipt import ExtractedReceipt
 
 
@@ -108,3 +111,61 @@ async def extract_receipt_from_pdf(pdf_bytes: bytes) -> ExtractedReceipt:
         len(result.line_items),
     )
     return result
+
+
+MATCHING_PROMPT_TEMPLATE = (
+    "You are matching abbreviated Spanish supermarket receipt product names "
+    "to Open Food Facts product entries.\n\n"
+    "For each product below, choose the BEST matching Open Food Facts candidate "
+    "or respond with null if none is a good match.\n"
+    "{supermarket_hint}\n"
+    "Respond ONLY with a JSON object mapping each product name to the chosen "
+    "EAN code (string) or null. Example: "
+    '{{"LECHE ENTERA": "8480000123456", "UNKNOWN PRODUCT": null}}\n\n'
+    "Products:\n{products_block}"
+)
+
+
+async def match_products_with_off(
+    candidates: dict[str, list[OFFCandidate]],
+    supermarket_name: str | None = None,
+) -> dict[str, str | None]:
+    """Use Gemini to select the best OFF match for each product. Returns empty dict on error."""
+    if not candidates:
+        return {}
+
+    supermarket_hint = ""
+    if supermarket_name:
+        supermarket_hint = (
+            f"These products were purchased at {supermarket_name}. "
+            "Consider this when choosing (e.g., Mercadona sells Hacendado brand)."
+        )
+
+    lines = []
+    for i, (name, options) in enumerate(candidates.items(), 1):
+        options_str = ", ".join(
+            f'{{"code": "{o.code}", "name": "{o.product_name}"}}' for o in options
+        )
+        lines.append(f"{i}. {name} -> [{options_str}]")
+
+    products_block = "\n".join(lines)
+    prompt = MATCHING_PROMPT_TEMPLATE.format(
+        supermarket_hint=supermarket_hint, products_block=products_block
+    )
+
+    try:
+        client = _get_client()
+        response = await client.aio.models.generate_content(
+            model=settings.gemini_model,
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
+        )
+        return json.loads(response.text)
+    except GeminiAPIError:
+        logger.warning("Gemini API error during OFF matching", exc_info=True)
+        return {}
+    except (json.JSONDecodeError, ValueError):
+        logger.error("Failed to parse Gemini matching response: %s", response.text)
+        return {}
