@@ -1,8 +1,11 @@
+import asyncio
 import datetime
 import uuid
 from collections.abc import AsyncGenerator
 from decimal import Decimal
+from urllib.parse import urlparse
 
+import asyncpg
 import pytest
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
@@ -46,8 +49,32 @@ def unique_pdf() -> bytes:
     return b"%PDF-1.4 fake " + uuid.uuid4().hex.encode()
 
 
+def _ensure_test_db_exists() -> None:
+    """Create the test database if it doesn't exist (uses asyncpg directly)."""
+    parsed = urlparse(settings.database_url_test)
+    db_name = parsed.path.lstrip("/")
+
+    async def _create() -> None:
+        conn = await asyncpg.connect(
+            host=parsed.hostname,
+            port=parsed.port or 5432,
+            user=parsed.username,
+            password=parsed.password,
+            database="postgres",
+        )
+        try:
+            exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", db_name)
+            if not exists:
+                await conn.execute(f'CREATE DATABASE "{db_name}"')
+        finally:
+            await conn.close()
+
+    asyncio.run(_create())
+
+
 def _run_test_migrations() -> None:
     """Run Alembic migrations against the test database (sync, called before event loop)."""
+    _ensure_test_db_exists()
     cfg = Config("alembic.ini")
     # Use sync driver — Alembic's env.py calls asyncio.run() which can't nest
     sync_url = settings.database_url_test.replace("+asyncpg", "")
