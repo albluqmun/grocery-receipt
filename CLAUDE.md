@@ -35,17 +35,16 @@ docker compose exec api pytest tests/test_health.py -v  # test individual
 docker compose exec api ruff check app/
 docker compose exec api ruff format app/
 
-# Reset BD (borrar volumen y recrear tablas al arrancar)
-docker compose down -v && docker compose up --build
-
 # Generar migración incremental
 docker compose exec api python -m alembic revision --autogenerate -m "description"
 ```
 
 > **Schema management:** Alembic es la fuente de verdad del schema.
 > El lifespan ejecuta `alembic upgrade head` al arrancar, aplicando migraciones pendientes.
-> Para cambios de schema: generar migración con `--autogenerate`, o en dev
-> `docker compose down -v` y reiniciar para recrear desde cero.
+> Para cambios de schema: generar migración con `--autogenerate`.
+
+> **⛔ PROHIBIDO:** NUNCA ejecutar `docker compose down -v` ni ningún comando que
+> destruya volúmenes o datos de la BD. Los datos son reales e irremplazables.
 
 ## Quality
 
