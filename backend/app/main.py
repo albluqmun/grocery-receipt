@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from alembic.config import Config
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 
 from alembic import command
@@ -44,6 +45,16 @@ app = FastAPI(
 )
 
 app.add_middleware(APIKeyMiddleware)
+
+_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_origin_regex=r"^http://localhost(:\d+)?$",
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=False,
+)
 
 app.include_router(health_router)
 app.include_router(supermarkets_router, prefix="/api/v1")
