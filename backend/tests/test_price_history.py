@@ -36,7 +36,7 @@ async def _seed_purchase(
             line_total=unit_price,
         )
     )
-    await db.commit()
+    await db.flush()
 
 
 async def test_price_history_returns_entries_desc(client: AsyncClient, db_session: AsyncSession):
@@ -73,7 +73,7 @@ async def test_price_history_empty_for_product_without_purchases(
 ):
     prod = Product(name="Nuevo")
     db_session.add(prod)
-    await db_session.commit()
+    await db_session.flush()
     resp = await client.get(f"{BASE}/{prod.id}/prices")
     assert resp.status_code == 200
     assert resp.json() == []

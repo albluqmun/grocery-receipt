@@ -1,12 +1,10 @@
-from datetime import date as _date
+from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
 class PriceHistoryEntry(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    date: _date
+    date: date
     supermarket_name: str
     unit_price: Decimal
