@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     google_drive_credentials_path: str = ""
     google_drive_folder_id: str = ""
     gemini_batch_limit: int = 0
+    api_key: str = ""
+    cors_origins: str = ""
 
     model_config = {"env_file": ".env"}
 
