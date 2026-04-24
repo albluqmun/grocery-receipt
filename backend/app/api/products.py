@@ -26,9 +26,10 @@ async def create_product(data: ProductCreate, db: AsyncSession = Depends(get_db)
 async def list_products(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    q: str | None = Query(default=None, max_length=200),
     db: AsyncSession = Depends(get_db),
 ):
-    items, total = await product_service.get_list(db, skip=skip, limit=limit)
+    items, total = await product_service.get_list(db, skip=skip, limit=limit, q=q)
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
 
 
