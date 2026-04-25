@@ -1,17 +1,34 @@
-# grocery_receipt
+# Grocery Receipt — Flutter Web Client
 
-A new Flutter project.
+Frontend para el tracker de precios de supermercado. Web only (Chrome).
 
-## Getting Started
+## Requisitos
 
-This project is a starting point for a Flutter application.
+- Flutter SDK 3.5+
+- Backend corriendo en `http://localhost:8000` (ver raíz del repo: `docker compose up`).
 
-A few resources to get you started if this is your first Flutter project:
+## Variables (dart-define)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+| Nombre          | Default                   | Descripción                              |
+|-----------------|---------------------------|------------------------------------------|
+| `API_BASE_URL`  | `http://localhost:8000`   | URL base del backend (sin `/api/v1`).    |
+| `API_KEY`       | *(vacío)*                 | Clave enviada en `X-API-Key`.            |
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Dev
+
+```bash
+flutter pub get
+flutter run -d chrome --web-port=5000 \
+  --dart-define=API_BASE_URL=http://localhost:8000 \
+  --dart-define=API_KEY=your-dev-key
+```
+
+## Build
+
+```bash
+flutter build web --release \
+  --dart-define=API_BASE_URL=https://api.example.com \
+  --dart-define=API_KEY=prod-key
+```
+
+El artefacto queda en `build/web/`.
