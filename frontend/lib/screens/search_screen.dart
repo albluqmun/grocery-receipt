@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../models/product.dart';
 import '../providers/product_search.dart';
 import '../widgets/debounced_search_field.dart';
 import '../widgets/product_tile.dart';
@@ -35,7 +36,7 @@ class SearchScreen extends ConsumerWidget {
 
   Widget _buildBody(
     BuildContext context,
-    AsyncValue results,
+    AsyncValue<List<Product>> results,
     String query,
   ) {
     if (query.trim().isEmpty) {
