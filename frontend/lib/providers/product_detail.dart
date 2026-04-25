@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/product.dart';
-import 'product_search.dart';
+import 'api.dart';
 
 final productDetailProvider =
     FutureProvider.autoDispose.family<Product, String>((ref, id) async {

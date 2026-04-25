@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/price_history_entry.dart';
-import 'product_search.dart';
+import 'api.dart';
 
 final priceHistoryProvider =
     FutureProvider.autoDispose.family<List<PriceHistoryEntry>, String>((ref, id) async {

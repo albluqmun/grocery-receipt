@@ -5,11 +5,11 @@ import '../models/price_history_entry.dart';
 import '../models/product.dart';
 
 class ApiService {
+  ApiService() : _dio = _buildDio();
+
   final Dio _dio;
 
-  ApiService._(this._dio);
-
-  factory ApiService.create() {
+  static Dio _buildDio() {
     final dio = Dio(
       BaseOptions(
         baseUrl: '${ApiConfig.baseUrl}${ApiConfig.apiVersion}',
@@ -28,7 +28,7 @@ class ApiService {
         },
       ),
     );
-    return ApiService._(dio);
+    return dio;
   }
 
   Future<List<Product>> searchProducts(String query, {int limit = 20}) async {
