@@ -5,11 +5,12 @@ import '../models/price_history_entry.dart';
 import '../models/product.dart';
 
 class ApiService {
-  ApiService() : _dio = _buildDio();
+  ApiService({HttpClientAdapter? httpClientAdapter})
+      : _dio = _buildDio(httpClientAdapter);
 
   final Dio _dio;
 
-  static Dio _buildDio() {
+  static Dio _buildDio([HttpClientAdapter? httpClientAdapter]) {
     final dio = Dio(
       BaseOptions(
         baseUrl: '${ApiConfig.baseUrl}${ApiConfig.apiVersion}',
@@ -18,6 +19,9 @@ class ApiService {
         headers: const {'Accept': 'application/json'},
       ),
     );
+    if (httpClientAdapter != null) {
+      dio.httpClientAdapter = httpClientAdapter;
+    }
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
