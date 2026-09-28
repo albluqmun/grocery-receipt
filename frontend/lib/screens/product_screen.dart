@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/price_history.dart';
 import '../providers/product_detail.dart';
+import '../utils/error_messages.dart';
 import '../widgets/price_table.dart';
 
 class ProductScreen extends ConsumerWidget {
@@ -18,7 +19,7 @@ class ProductScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Producto')),
       body: product.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(friendlyErrorMessage(e))),
         data: (p) => SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -39,9 +40,9 @@ class ProductScreen extends ConsumerWidget {
                 ),
               const SizedBox(height: 16),
               Text(p.name, style: Theme.of(context).textTheme.headlineSmall),
-              if (p.brand != null) Text(p.brand!),
-              if (p.offName != null && p.offName!.trim() != p.name.trim())
-                Text(p.offName!, style: Theme.of(context).textTheme.bodySmall),
+              if (p.displayBrand != null) Text(p.displayBrand!),
+              if (p.displayOffName != null)
+                Text(p.displayOffName!, style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 24),
               Text('Histórico de precios',
                   style: Theme.of(context).textTheme.titleMedium),
@@ -51,7 +52,7 @@ class ProductScreen extends ConsumerWidget {
                   padding: EdgeInsets.all(16),
                   child: Center(child: CircularProgressIndicator()),
                 ),
-                error: (e, _) => Text('Error: $e'),
+                error: (e, _) => Text(friendlyErrorMessage(e)),
                 data: (entries) => PriceTable(entries: entries),
               ),
             ],

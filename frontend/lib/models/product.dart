@@ -22,4 +22,10 @@ class Product {
       offImageUrl: json['off_image_url'] as String?,
     );
   }
+
+  String? get displayBrand =>
+      (brand != null && brand!.trim().isNotEmpty) ? brand : null;
+
+  String? get displayOffName =>
+      (offName != null && offName!.trim() != name.trim()) ? offName : null;
 }

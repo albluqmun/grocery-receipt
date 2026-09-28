@@ -10,8 +10,7 @@ class ProductTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showOffName =
-        product.offName != null && product.offName!.trim() != product.name.trim();
+    final displayOffName = product.displayOffName;
     return ListTile(
       leading: product.offImageUrl != null
           ? Image.network(
@@ -22,8 +21,8 @@ class ProductTile extends StatelessWidget {
           : const Icon(Icons.shopping_bag_outlined),
       title: Text(product.name),
       subtitle: Text([
-        if (product.brand != null) product.brand!,
-        if (showOffName) product.offName!,
+        if (product.displayBrand != null) product.displayBrand!,
+        if (displayOffName != null) displayOffName,
       ].join(' · ')),
       onTap: onTap,
     );

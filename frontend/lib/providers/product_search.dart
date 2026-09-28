@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/product.dart';
@@ -9,5 +10,7 @@ final productSearchProvider = FutureProvider.autoDispose<List<Product>>((ref) as
   final q = ref.watch(searchQueryProvider);
   if (q.isEmpty) return const <Product>[];
   final api = ref.watch(apiServiceProvider);
-  return api.searchProducts(q);
+  final cancelToken = CancelToken();
+  ref.onDispose(() => cancelToken.cancel());
+  return api.searchProducts(q, cancelToken: cancelToken);
 });

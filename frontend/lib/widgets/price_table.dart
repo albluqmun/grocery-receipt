@@ -17,21 +17,24 @@ class PriceTable extends StatelessWidget {
     }
     final dateFmt = DateFormat('yyyy-MM-dd');
     final priceFmt = NumberFormat.currency(locale: 'es_ES', symbol: '€');
-    return DataTable(
-      columns: const [
-        DataColumn(label: Text('Fecha')),
-        DataColumn(label: Text('Supermercado')),
-        DataColumn(label: Text('Precio unitario'), numeric: true),
-      ],
-      rows: entries
-          .map(
-            (e) => DataRow(cells: [
-              DataCell(Text(dateFmt.format(e.date))),
-              DataCell(Text(e.supermarketName)),
-              DataCell(Text(priceFmt.format(e.unitPrice))),
-            ]),
-          )
-          .toList(),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columns: const [
+          DataColumn(label: Text('Fecha')),
+          DataColumn(label: Text('Supermercado')),
+          DataColumn(label: Text('Precio unitario'), numeric: true),
+        ],
+        rows: entries
+            .map(
+              (e) => DataRow(cells: [
+                DataCell(Text(dateFmt.format(e.date))),
+                DataCell(Text(e.supermarketName)),
+                DataCell(Text(priceFmt.format(e.unitPrice))),
+              ]),
+            )
+            .toList(),
+      ),
     );
   }
 }
