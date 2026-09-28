@@ -35,5 +35,5 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         "Category", secondary=product_categories, back_populates="products", lazy="selectin"
     )
     line_items: Mapped[list["LineItem"]] = relationship(
-        "LineItem", back_populates="product", lazy="raise"
+        "LineItem", back_populates="product", lazy="raise", passive_deletes="all"
     )

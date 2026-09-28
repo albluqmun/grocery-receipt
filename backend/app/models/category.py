@@ -17,5 +17,9 @@ class Category(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     external_id: Mapped[str | None] = mapped_column(String(100))
 
     products: Mapped[list["Product"]] = relationship(
-        "Product", secondary="product_categories", back_populates="categories", lazy="raise"
+        "Product",
+        secondary="product_categories",
+        back_populates="categories",
+        lazy="raise",
+        passive_deletes=True,
     )

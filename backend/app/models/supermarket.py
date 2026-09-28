@@ -17,5 +17,5 @@ class Supermarket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     locality: Mapped[str | None] = mapped_column(String(200))
 
     tickets: Mapped[list["Ticket"]] = relationship(
-        "Ticket", back_populates="supermarket", lazy="raise"
+        "Ticket", back_populates="supermarket", lazy="raise", passive_deletes="all"
     )
