@@ -1,14 +1,14 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from google.genai.errors import APIError as GeminiAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_gemini
 from app.api.exceptions import not_found
 from app.core.database import get_db
-from app.schemas.pagination import PaginatedResponse
+from app.schemas.pagination import PaginatedResponse, Pagination, pagination_params
 from app.schemas.receipt import ReceiptUploadResponse
 from app.schemas.ticket import TicketRead
 from app.services import gemini as gemini_service
@@ -79,12 +79,11 @@ async def upload_ticket(
 
 @router.get("", response_model=PaginatedResponse[TicketRead])
 async def list_tickets(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    pagination: Pagination = Depends(pagination_params),
     db: AsyncSession = Depends(get_db),
 ):
-    items, total = await ticket_service.get_list(db, skip=skip, limit=limit)
-    return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
+    items, total = await ticket_service.get_list(db, skip=pagination.skip, limit=pagination.limit)
+    return PaginatedResponse(items=items, total=total, skip=pagination.skip, limit=pagination.limit)
 
 
 @router.get("/{ticket_id}", response_model=TicketRead)

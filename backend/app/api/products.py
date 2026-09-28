@@ -8,7 +8,7 @@ from app.api.dependencies import require_gemini
 from app.api.exceptions import conflict, not_found
 from app.core.database import get_db
 from app.schemas.enrichment import EnrichmentResult, ResetResult
-from app.schemas.pagination import PaginatedResponse
+from app.schemas.pagination import PaginatedResponse, Pagination, pagination_params
 from app.schemas.product import ProductCategoryAdd, ProductCreate, ProductRead, ProductUpdate
 from app.services import category as category_service
 from app.services import enrichment as enrichment_service
@@ -24,12 +24,11 @@ async def create_product(data: ProductCreate, db: AsyncSession = Depends(get_db)
 
 @router.get("", response_model=PaginatedResponse[ProductRead])
 async def list_products(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    pagination: Pagination = Depends(pagination_params),
     db: AsyncSession = Depends(get_db),
 ):
-    items, total = await product_service.get_list(db, skip=skip, limit=limit)
-    return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
+    items, total = await product_service.get_list(db, skip=pagination.skip, limit=pagination.limit)
+    return PaginatedResponse(items=items, total=total, skip=pagination.skip, limit=pagination.limit)
 
 
 @router.post("/enrich", response_model=EnrichmentResult)
