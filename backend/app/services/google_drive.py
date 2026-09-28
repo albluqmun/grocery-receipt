@@ -153,7 +153,8 @@ async def sync_drive_folder(db: AsyncSession) -> DriveSyncResponse:
     results: list[DriveSyncFileResult] = []
     for df in pending:
         try:
-            result = await _process_single_file(db, df)
+            async with db.begin_nested():
+                result = await _process_single_file(db, df)
         except GeminiAPIError as exc:
             logger.exception("Gemini API error for '%s' (id=%s)", df.name, df.id)
             error_code = SyncErrorCode.RATE_LIMIT if exc.code == 429 else SyncErrorCode.GEMINI_ERROR

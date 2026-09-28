@@ -4,12 +4,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.supermarket import Supermarket
 from app.models.ticket import Ticket
 from app.schemas.google_drive import DriveFile
+from app.services import google_drive as google_drive_service
 from tests.conftest import make_extracted_receipt, unique_pdf
 
 BASE = "/api/v1/tickets/drive"
@@ -310,3 +312,48 @@ async def test_sync_batch_limit(
     # Oldest first after reverse, so ticket1 is processed
     assert body["results"][0]["file_name"] == "ticket1.pdf"
     assert mock_download.call_count == 1
+
+
+async def test_sync_isolates_db_failure_to_one_file(
+    client: AsyncClient,
+    monkeypatch,
+):
+    """A real DB-level error while processing one file must not poison the session
+    for subsequent files in the same sync batch (regression test for the P1-1 fix)."""
+    monkeypatch.setattr(settings, "gemini_api_key", "fake-key")
+    monkeypatch.setattr(settings, "google_drive_credentials_path", "/fake/credentials.json")
+    monkeypatch.setattr(settings, "google_drive_folder_id", "fake-folder-id")
+
+    pdf_bad, pdf_good = unique_pdf(), unique_pdf()
+    original_process = google_drive_service._process_single_file
+
+    async def patched_process(db, df):
+        if df.id == "drive-bad":
+            # Trigger a REAL DB-level error (a mocked Python exception would not
+            # actually poison the asyncpg transaction, so it wouldn't prove anything).
+            await db.execute(text("SELECT * FROM no_such_table_xyz"))
+        return await original_process(db, df)
+
+    with (
+        patch(f"{_SVC}.list_pdf_files", new_callable=AsyncMock) as mock_list,
+        patch(f"{_SVC}.download_file", new_callable=AsyncMock) as mock_download,
+        patch(f"{_SVC}.extract_receipt_from_pdf", new_callable=AsyncMock) as mock_extract,
+        patch(f"{_SVC}._process_single_file", side_effect=patched_process),
+    ):
+        # Newest first (as returned by Drive); sync_drive_folder reverses to oldest-first,
+        # so drive-bad is processed BEFORE drive-good.
+        mock_list.return_value = [
+            DriveFile(id="drive-good", name="good.pdf"),
+            DriveFile(id="drive-bad", name="bad.pdf"),
+        ]
+        mock_download.side_effect = [pdf_bad, pdf_good]
+        mock_extract.return_value = make_extracted_receipt()
+
+        resp = await client.post(f"{BASE}/sync")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["files_error"] == 1
+    assert body["files_processed"] == 1
+    processed = next(r for r in body["results"] if r["status"] == "processed")
+    assert processed["file_name"] == "good.pdf"
