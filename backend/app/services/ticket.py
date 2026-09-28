@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.ticket import Ticket
+from app.schemas.receipt import ReceiptUploadResponse
 from app.schemas.ticket import TicketCreate, TicketUpdate
 
 
@@ -69,3 +70,16 @@ async def delete(db: AsyncSession, ticket_id: uuid.UUID) -> bool:
     await db.delete(ticket)
     await db.flush()
     return True
+
+
+def receipt_from_duplicate(ticket: Ticket) -> ReceiptUploadResponse:
+    return ReceiptUploadResponse(
+        ticket_id=ticket.id,
+        supermarket=ticket.supermarket.name,
+        date=ticket.date,
+        total=ticket.total,
+        products_created=0,
+        products_matched=0,
+        line_items_count=0,
+        duplicate=True,
+    )

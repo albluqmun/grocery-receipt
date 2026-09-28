@@ -1,15 +1,6 @@
 from pydantic import BaseModel
 
 
-class OFFCandidate(BaseModel):
-    """A product candidate returned by Open Food Facts search."""
-
-    code: str
-    product_name: str
-    categories: str | None = None
-    image_url: str | None = None
-
-
 class EnrichmentResult(BaseModel):
     """Response from product enrichment operations."""
 

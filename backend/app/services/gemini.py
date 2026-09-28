@@ -8,8 +8,8 @@ from google.genai.errors import APIError as GeminiAPIError
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.schemas.enrichment import OFFCandidate
 from app.schemas.receipt import ExtractedReceipt
+from app.services.openfoodfacts import OFFCandidate
 
 
 class ReceiptParseError(ValueError):

@@ -68,7 +68,7 @@ async def process_extracted_receipt(
             logger.info(
                 "Duplicate ticket (invoice_number=%s): %s", data.invoice_number, duplicate.id
             )
-            return ReceiptUploadResponse.duplicate_from(duplicate)
+            return ticket_service.receipt_from_duplicate(duplicate)
 
     supermarket = await _find_or_create_supermarket(
         db, data.supermarket_name, data.supermarket_locality

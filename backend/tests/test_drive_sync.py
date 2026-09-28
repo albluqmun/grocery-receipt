@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.supermarket import Supermarket
 from app.models.ticket import Ticket
-from app.schemas.google_drive import DriveFile
 from app.services import google_drive as google_drive_service
+from app.services.google_drive_client import DriveFile
 from tests.conftest import make_extracted_receipt, unique_pdf
 
 BASE = "/api/v1/tickets/drive"

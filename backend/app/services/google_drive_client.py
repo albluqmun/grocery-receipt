@@ -4,11 +4,19 @@ import io
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+from pydantic import BaseModel
 
 from app.core.config import settings
-from app.schemas.google_drive import DriveFile
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+
+
+class DriveFile(BaseModel):
+    """Metadata of a file in Google Drive."""
+
+    id: str
+    name: str
+
 
 _service = None
 

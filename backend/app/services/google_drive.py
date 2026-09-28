@@ -5,22 +5,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.schemas.google_drive import (
-    DriveFile,
     DriveSyncFileResult,
     DriveSyncResponse,
     SyncErrorCode,
     SyncFileStatus,
 )
-from app.schemas.receipt import ReceiptUploadResponse
 from app.services.gemini import ReceiptParseError, extract_receipt_from_pdf
-from app.services.google_drive_client import download_file, list_pdf_files
+from app.services.google_drive_client import DriveFile, download_file, list_pdf_files
 from app.services.receipt import (
     InvalidPdfError,
     compute_pdf_hash,
     process_extracted_receipt,
     validate_pdf_bytes,
 )
-from app.services.ticket import find_by_pdf_hash, get_existing_drive_file_ids
+from app.services.ticket import (
+    find_by_pdf_hash,
+    get_existing_drive_file_ids,
+    receipt_from_duplicate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ async def _process_single_file(db: AsyncSession, df: DriveFile) -> DriveSyncFile
         return DriveSyncFileResult(
             file_name=df.name,
             status=SyncFileStatus.DUPLICATE,
-            detail=ReceiptUploadResponse.duplicate_from(existing),
+            detail=receipt_from_duplicate(existing),
         )
 
     extracted = await extract_receipt_from_pdf(pdf_bytes)

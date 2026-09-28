@@ -14,10 +14,15 @@ from app.models.line_item import LineItem
 from app.models.product import Product
 from app.models.supermarket import Supermarket
 from app.models.ticket import Ticket
-from app.schemas.enrichment import EnrichmentResult, OFFCandidate
+from app.schemas.enrichment import EnrichmentResult
 from app.services.enrichment import enrich_pending, enrich_products, reset_failed_enrichments
 from app.services.gemini import match_products_with_off
-from app.services.openfoodfacts import _simplify_search_terms, search_many, search_products
+from app.services.openfoodfacts import (
+    OFFCandidate,
+    _simplify_search_terms,
+    search_many,
+    search_products,
+)
 from tests.conftest import unique_pdf
 
 

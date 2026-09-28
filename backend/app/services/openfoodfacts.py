@@ -4,10 +4,19 @@ import re
 import uuid
 
 import httpx
-
-from app.schemas.enrichment import OFFCandidate
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+class OFFCandidate(BaseModel):
+    """A product candidate returned by Open Food Facts search."""
+
+    code: str
+    product_name: str
+    categories: str | None = None
+    image_url: str | None = None
+
 
 OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
 OFF_FIELDS = "code,product_name,categories,image_url"
