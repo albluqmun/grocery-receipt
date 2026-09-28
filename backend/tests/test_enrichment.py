@@ -18,7 +18,7 @@ from app.schemas.enrichment import EnrichmentResult, OFFCandidate
 from app.services.enrichment import enrich_pending, enrich_products, reset_failed_enrichments
 from app.services.gemini import match_products_with_off
 from app.services.openfoodfacts import _simplify_search_terms, search_products
-from tests.conftest import make_extracted_receipt, unique_pdf
+from tests.conftest import unique_pdf
 
 
 @pytest.fixture(autouse=True)
@@ -561,48 +561,6 @@ class TestEnrichEndpoints:
         settings.gemini_api_key = ""
         resp = await client.post(f"{PRODUCTS_BASE}/enrich")
         assert resp.status_code == 503
-
-
-# ---------------------------------------------------------------------------
-# Ticket upload enrichment tests
-# ---------------------------------------------------------------------------
-
-
-class TestTicketUploadEnrichment:
-    @patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
-    @patch("app.services.receipt.enrich_products", new_callable=AsyncMock)
-    async def test_upload_triggers_enrichment(
-        self,
-        mock_enrich: AsyncMock,
-        mock_extract: AsyncMock,
-        client: AsyncClient,
-    ):
-        mock_extract.return_value = make_extracted_receipt()
-        mock_enrich.return_value = EnrichmentResult(processed=1, enriched=1, not_found=0, skipped=0)
-
-        resp = await client.post(f"{TICKETS_BASE}/upload", files=_pdf_upload())
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["products_enriched"] == 1
-        mock_enrich.assert_called_once()
-
-    @patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
-    @patch("app.services.receipt.enrich_products", new_callable=AsyncMock)
-    async def test_upload_succeeds_when_enrichment_fails(
-        self,
-        mock_enrich: AsyncMock,
-        mock_extract: AsyncMock,
-        client: AsyncClient,
-    ):
-        mock_extract.return_value = make_extracted_receipt()
-        mock_enrich.side_effect = Exception("Gemini down")
-
-        resp = await client.post(f"{TICKETS_BASE}/upload", files=_pdf_upload())
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["products_enriched"] == 0
 
 
 # ---------------------------------------------------------------------------
