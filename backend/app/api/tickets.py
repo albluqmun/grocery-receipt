@@ -14,8 +14,8 @@ from app.schemas.ticket import TicketRead
 from app.services import ticket as ticket_service
 from app.services.gemini import ReceiptParseError, extract_receipt_from_pdf
 from app.services.receipt import (
+    InvalidPdfError,
     compute_pdf_hash,
-    find_by_pdf_hash,
     process_extracted_receipt,
     validate_pdf_bytes,
 )
@@ -44,16 +44,19 @@ async def upload_ticket(
 
     pdf_bytes = await file.read()
 
-    validation_error = validate_pdf_bytes(pdf_bytes)
-    if validation_error:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=validation_error,
+    try:
+        validate_pdf_bytes(pdf_bytes)
+    except InvalidPdfError as exc:
+        detail = (
+            "El archivo no es un PDF válido"
+            if str(exc) == "not_pdf"
+            else "El archivo excede el tamaño máximo de 10 MB"
         )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detail)
 
     pdf_hash = compute_pdf_hash(pdf_bytes)
 
-    existing = await find_by_pdf_hash(db, pdf_hash)
+    existing = await ticket_service.find_by_pdf_hash(db, pdf_hash)
     if existing:
         logger.info("Duplicate PDF (hash match), existing ticket: %s", existing.id)
         return ReceiptUploadResponse.duplicate_from(existing)

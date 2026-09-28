@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.ticket import Ticket
 from app.schemas.ticket import TicketCreate, TicketUpdate
@@ -22,6 +23,32 @@ async def get_list(db: AsyncSession, skip: int = 0, limit: int = 20) -> tuple[li
     total = await db.scalar(select(func.count()).select_from(Ticket))
     result = await db.execute(select(Ticket).order_by(Ticket.date.desc()).offset(skip).limit(limit))
     return list(result.scalars().all()), total or 0
+
+
+async def find_by_pdf_hash(db: AsyncSession, pdf_hash: str) -> Ticket | None:
+    result = await db.execute(
+        select(Ticket).options(selectinload(Ticket.supermarket)).where(Ticket.pdf_hash == pdf_hash)
+    )
+    return result.scalar_one_or_none()
+
+
+async def find_by_invoice_number(db: AsyncSession, invoice_number: str) -> Ticket | None:
+    result = await db.execute(
+        select(Ticket)
+        .options(selectinload(Ticket.supermarket))
+        .where(Ticket.invoice_number == invoice_number)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_existing_drive_file_ids(db: AsyncSession, candidate_ids: list[str]) -> set[str]:
+    """Return the subset of candidate_ids that already exist in the database."""
+    if not candidate_ids:
+        return set()
+    result = await db.execute(
+        select(Ticket.drive_file_id).where(Ticket.drive_file_id.in_(candidate_ids))
+    )
+    return {row[0] for row in result.all()}
 
 
 async def update(db: AsyncSession, ticket_id: uuid.UUID, data: TicketUpdate) -> Ticket | None:

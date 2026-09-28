@@ -15,12 +15,12 @@ from app.schemas.receipt import ReceiptUploadResponse
 from app.services.gemini import ReceiptParseError, extract_receipt_from_pdf
 from app.services.google_drive_client import download_file, list_pdf_files
 from app.services.receipt import (
+    InvalidPdfError,
     compute_pdf_hash,
-    find_by_pdf_hash,
-    get_existing_drive_file_ids,
     process_extracted_receipt,
     validate_pdf_bytes,
 )
+from app.services.ticket import find_by_pdf_hash, get_existing_drive_file_ids
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +29,19 @@ async def _process_single_file(db: AsyncSession, df: DriveFile) -> DriveSyncFile
     """Download, validate, extract, and persist a single Drive PDF."""
     pdf_bytes = await download_file(df.id)
 
-    validation_error = validate_pdf_bytes(pdf_bytes)
-    if validation_error:
+    try:
+        validate_pdf_bytes(pdf_bytes)
+    except InvalidPdfError as exc:
+        detail = (
+            "El archivo no es un PDF válido"
+            if str(exc) == "not_pdf"
+            else "El archivo excede el tamaño máximo de 10 MB"
+        )
         return DriveSyncFileResult(
             file_name=df.name,
             status=SyncFileStatus.ERROR,
             error_code=SyncErrorCode.INVALID_PDF,
-            error_detail=validation_error,
+            error_detail=detail,
         )
 
     pdf_hash = compute_pdf_hash(pdf_bytes)
