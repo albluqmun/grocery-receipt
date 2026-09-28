@@ -23,5 +23,13 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env"}
 
+    @property
+    def gemini_enabled(self) -> bool:
+        return bool(self.gemini_api_key)
+
+    @property
+    def google_drive_enabled(self) -> bool:
+        return bool(self.google_drive_credentials_path and self.google_drive_folder_id)
+
 
 settings = Settings()
