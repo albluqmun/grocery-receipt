@@ -3,6 +3,7 @@ import logging
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.product import Product
 from app.models.supermarket import Supermarket
@@ -34,7 +35,9 @@ def compute_pdf_hash(pdf_bytes: bytes) -> str:
 
 
 async def find_by_pdf_hash(db: AsyncSession, pdf_hash: str) -> Ticket | None:
-    result = await db.execute(select(Ticket).where(Ticket.pdf_hash == pdf_hash))
+    result = await db.execute(
+        select(Ticket).options(selectinload(Ticket.supermarket)).where(Ticket.pdf_hash == pdf_hash)
+    )
     return result.scalar_one_or_none()
 
 
@@ -49,7 +52,11 @@ async def get_existing_drive_file_ids(db: AsyncSession, candidate_ids: list[str]
 
 
 async def _find_by_invoice_number(db: AsyncSession, invoice_number: str) -> Ticket | None:
-    result = await db.execute(select(Ticket).where(Ticket.invoice_number == invoice_number))
+    result = await db.execute(
+        select(Ticket)
+        .options(selectinload(Ticket.supermarket))
+        .where(Ticket.invoice_number == invoice_number)
+    )
     return result.scalar_one_or_none()
 
 

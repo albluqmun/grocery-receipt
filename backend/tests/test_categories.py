@@ -92,3 +92,20 @@ async def test_delete_with_products(client: AsyncClient, db_session: AsyncSessio
     await db_session.commit()
     resp = await client.delete(f"{BASE}/{cat.id}")
     assert resp.status_code == 204
+
+
+async def test_get_category_with_products_does_not_error(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """GET must not attempt to eager-load products now that Category.products is lazy='raise'."""
+    cat = await _create_category(db_session)
+    product = Product(name="Leche")
+    db_session.add(product)
+    await db_session.flush()
+    await db_session.execute(
+        product_categories.insert().values(product_id=product.id, category_id=cat.id)
+    )
+    await db_session.commit()
+
+    resp = await client.get(f"{BASE}/{cat.id}")
+    assert resp.status_code == 200
