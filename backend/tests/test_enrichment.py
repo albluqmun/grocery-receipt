@@ -579,7 +579,7 @@ class TestEnrichEndpoints:
         assert body["enriched"] == 1
         assert body["not_found"] == 1
 
-    @patch("app.api.products.enrich_products", new_callable=AsyncMock)
+    @patch("app.api.products.enrich_one", new_callable=AsyncMock)
     async def test_single_enrich(
         self, mock_enrich: AsyncMock, client: AsyncClient, db_session: AsyncSession
     ):
