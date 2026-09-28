@@ -9,14 +9,14 @@ class TicketCreate(BaseModel):
     date: datetime.date
     supermarket_id: uuid.UUID
     total: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
-    invoice_number: str | None = None
-    pdf_hash: str | None = None
-    drive_file_id: str | None = None
+    invoice_number: str | None = Field(default=None, max_length=100)
+    pdf_hash: str | None = Field(default=None, max_length=64)
+    drive_file_id: str | None = Field(default=None, max_length=100)
 
 
 class TicketUpdate(BaseModel):
-    date: datetime.date | None = None
-    supermarket_id: uuid.UUID | None = None
+    date: datetime.date | None = Field(default=None)
+    supermarket_id: uuid.UUID | None = Field(default=None)
     total: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
 
 
