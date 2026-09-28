@@ -1,8 +1,7 @@
-import asyncio
 import datetime
 import logging
+import uuid
 
-import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,9 +10,10 @@ from app.models.line_item import LineItem
 from app.models.product import Product
 from app.models.supermarket import Supermarket
 from app.models.ticket import Ticket
-from app.schemas.enrichment import EnrichmentResult, OFFCandidate
+from app.schemas.enrichment import EnrichmentResult
+from app.services.common import get_or_create_many
 from app.services.gemini import match_products_with_off
-from app.services.openfoodfacts import OFF_TIMEOUT, REQUEST_DELAY, search_products
+from app.services.openfoodfacts import search_many
 
 logger = logging.getLogger(__name__)
 
@@ -28,23 +28,80 @@ async def _assign_categories(
     if not names:
         return
 
-    # Find existing categories
-    result = await db.execute(select(Category).where(Category.name.in_(names)))
-    existing = {cat.name: cat for cat in result.scalars().all()}
-
-    # Create missing categories
-    for name in names:
-        if name not in existing:
-            cat = Category(name=name)
-            db.add(cat)
-            existing[name] = cat
-
-    if existing:
-        await db.flush()
+    categories_map, _created = await get_or_create_many(
+        db, Category, names, lambda name: Category(name=name)
+    )
 
     # Ensure the relationship is loaded before assigning (avoid sync lazy-load)
     await db.refresh(product, ["categories"])
-    product.categories = list(existing.values())
+    product.categories = list(categories_map.values())
+
+
+def _gemini_key(name: str, hint: str | None) -> str:
+    return f"{name} ({hint})" if hint else name
+
+
+async def _enrich(
+    db: AsyncSession,
+    products_with_hints: dict[uuid.UUID, tuple[Product, str | None]],
+) -> EnrichmentResult:
+    """Shared enrichment core: search OFF, match with Gemini, apply results.
+
+    `products_with_hints` maps product.id to (product, supermarket_hint); every
+    entry is assumed to need enrichment (callers pre-filter by off_synced_at).
+    """
+    now = datetime.datetime.now(datetime.UTC)
+    names = {pid: product.name for pid, (product, _hint) in products_with_hints.items()}
+    candidates_by_id = await search_many(names)
+
+    for pid, (product, _hint) in products_with_hints.items():
+        if pid not in candidates_by_id:
+            product.off_synced_at = now
+
+    if not candidates_by_id:
+        await db.flush()
+        return EnrichmentResult(
+            processed=len(products_with_hints),
+            enriched=0,
+            not_found=len(products_with_hints),
+            skipped=0,
+        )
+
+    def _key(pid: uuid.UUID) -> str:
+        product, hint = products_with_hints[pid]
+        return _gemini_key(product.name, hint)
+
+    gemini_input = {_key(pid): candidates for pid, candidates in candidates_by_id.items()}
+    matches = await match_products_with_off(gemini_input)
+    failed = len(matches) == 0 and len(gemini_input) > 0
+
+    candidates_flat = {c.code: c for cands in candidates_by_id.values() for c in cands}
+
+    enriched = 0
+    for pid, candidates in candidates_by_id.items():
+        product = products_with_hints[pid][0]
+        matched_code = matches.get(_key(pid))
+
+        if matched_code and matched_code in candidates_flat:
+            off = candidates_flat[matched_code]
+            product.off_code = off.code
+            product.off_name = off.product_name
+            product.off_image_url = off.image_url
+            await _assign_categories(db, product, off.categories)
+            enriched += 1
+
+        if not failed:
+            product.off_synced_at = now
+
+    await db.flush()
+
+    return EnrichmentResult(
+        processed=len(products_with_hints),
+        enriched=enriched,
+        not_found=len(products_with_hints) - enriched,
+        skipped=0,
+        failed=failed,
+    )
 
 
 async def enrich_products(
@@ -59,78 +116,37 @@ async def enrich_products(
     if not pending:
         return EnrichmentResult(processed=0, enriched=0, not_found=0, skipped=skipped)
 
-    # Step 1: Search OFF for each product (spaced to stay within rate limit)
-    all_candidates: dict[str, list[OFFCandidate]] = {}
-    async with httpx.AsyncClient(timeout=OFF_TIMEOUT) as http_client:
-        for i, product in enumerate(pending):
-            if i > 0:
-                await asyncio.sleep(REQUEST_DELAY)
-            candidates = await search_products(product.name, client=http_client)
-            if candidates:
-                all_candidates[product.name] = candidates
+    products_with_hints = {p.id: (p, supermarket_hint) for p in pending}
+    result = await _enrich(db, products_with_hints)
+    return result.model_copy(update={"skipped": skipped})
 
-    # Products with no OFF results at all — mark synced, no match
-    products_without_candidates = [p for p in pending if p.name not in all_candidates]
-    now = datetime.datetime.now(datetime.UTC)
-    for product in products_without_candidates:
-        product.off_synced_at = now
 
-    if not all_candidates:
-        await db.flush()
-        return EnrichmentResult(
-            processed=len(pending),
-            enriched=0,
-            not_found=len(pending),
-            skipped=skipped,
-        )
+async def enrich_one(db: AsyncSession, product: Product) -> EnrichmentResult:
+    """Force re-enrichment of a single product, ignoring any previous sync state."""
+    product.off_synced_at = None
+    return await enrich_products(db, [product])
 
-    # Step 2: Ask Gemini to match
-    gemini_input: dict[str, list[OFFCandidate]] = {}
-    for product in pending:
-        if product.name in all_candidates:
-            key = f"{product.name} ({supermarket_hint})" if supermarket_hint else product.name
-            gemini_input[key] = all_candidates[product.name]
 
-    matches = await match_products_with_off(gemini_input)
-    failed = len(matches) == 0 and len(gemini_input) > 0
-
-    # Step 3: Apply matches
-    enriched = 0
-    candidates_flat = {c.code: c for candidates in all_candidates.values() for c in candidates}
-
-    for product in pending:
-        if product.name not in all_candidates:
-            continue  # Already handled above
-
-        key = f"{product.name} ({supermarket_hint})" if supermarket_hint else product.name
-        matched_code = matches.get(key)
-
-        if matched_code and matched_code in candidates_flat:
-            off = candidates_flat[matched_code]
-            product.off_code = off.code
-            product.off_name = off.product_name
-            product.off_image_url = off.image_url
-            await _assign_categories(db, product, off.categories)
-            enriched += 1
-
-        if not failed:
-            product.off_synced_at = now
-
-    await db.flush()
-
-    return EnrichmentResult(
-        processed=len(pending),
-        enriched=enriched,
-        not_found=len(pending) - enriched,
-        skipped=skipped,
-        failed=failed,
+async def _supermarket_hints_for(
+    db: AsyncSession, product_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str | None]:
+    """Return each product's most recent purchase supermarket name, via one query."""
+    stmt = (
+        select(LineItem.product_id, Supermarket.name, Ticket.date)
+        .join(Ticket, Ticket.id == LineItem.ticket_id)
+        .join(Supermarket, Supermarket.id == Ticket.supermarket_id)
+        .where(LineItem.product_id.in_(product_ids))
+        .order_by(LineItem.product_id, Ticket.date.desc())
     )
+    result = await db.execute(stmt)
+    hints: dict[uuid.UUID, str | None] = {}
+    for product_id, supermarket_name, _date in result.all():
+        if product_id not in hints:
+            hints[product_id] = supermarket_name
+    return hints
 
 
-async def enrich_pending(
-    db: AsyncSession,
-    limit: int = 10,
-) -> EnrichmentResult:
+async def enrich_pending(db: AsyncSession, limit: int = 10) -> EnrichmentResult:
     """Enrich up to `limit` products that haven't been synced yet."""
     result = await db.execute(select(Product).where(Product.off_synced_at.is_(None)).limit(limit))
     products = list(result.scalars().all())
@@ -138,79 +154,9 @@ async def enrich_pending(
     if not products:
         return EnrichmentResult(processed=0, enriched=0, not_found=0, skipped=0)
 
-    # Get supermarket hint per product via line_items -> tickets -> supermarkets
-    product_supermarkets: dict[str, str | None] = {}
-    for product in products:
-        stmt = (
-            select(Ticket.supermarket_id)
-            .join(LineItem, LineItem.ticket_id == Ticket.id)
-            .where(LineItem.product_id == product.id)
-            .order_by(Ticket.date.desc())
-            .limit(1)
-        )
-        ticket_result = await db.execute(stmt)
-        supermarket_id = ticket_result.scalar_one_or_none()
-        if supermarket_id:
-            supermarket = await db.get(Supermarket, supermarket_id)
-            product_supermarkets[product.name] = supermarket.name if supermarket else None
-        else:
-            product_supermarkets[product.name] = None
-
-    # Build candidates with per-product supermarket context
-    all_candidates: dict[str, list[OFFCandidate]] = {}
-    pending_with_candidates: list[Product] = []
-    now = datetime.datetime.now(datetime.UTC)
-
-    async with httpx.AsyncClient(timeout=OFF_TIMEOUT) as http_client:
-        for i, product in enumerate(products):
-            if i > 0:
-                await asyncio.sleep(REQUEST_DELAY)
-            candidates = await search_products(product.name, client=http_client)
-            if candidates:
-                sm = product_supermarkets.get(product.name)
-                key = f"{product.name} ({sm})" if sm else product.name
-                all_candidates[key] = candidates
-                pending_with_candidates.append(product)
-            else:
-                product.off_synced_at = now
-
-    if not all_candidates:
-        await db.flush()
-        return EnrichmentResult(
-            processed=len(products), enriched=0, not_found=len(products), skipped=0
-        )
-
-    matches = await match_products_with_off(all_candidates)
-    failed = len(matches) == 0 and len(all_candidates) > 0
-
-    enriched = 0
-    candidates_flat = {c.code: c for cands in all_candidates.values() for c in cands}
-
-    for product in pending_with_candidates:
-        sm = product_supermarkets.get(product.name)
-        key = f"{product.name} ({sm})" if sm else product.name
-        matched_code = matches.get(key)
-
-        if matched_code and matched_code in candidates_flat:
-            off = candidates_flat[matched_code]
-            product.off_code = off.code
-            product.off_name = off.product_name
-            product.off_image_url = off.image_url
-            await _assign_categories(db, product, off.categories)
-            enriched += 1
-
-        if not failed:
-            product.off_synced_at = now
-
-    await db.flush()
-
-    return EnrichmentResult(
-        processed=len(products),
-        enriched=enriched,
-        not_found=len(products) - enriched,
-        skipped=0,
-        failed=failed,
-    )
+    hints = await _supermarket_hints_for(db, [p.id for p in products])
+    products_with_hints = {p.id: (p, hints.get(p.id)) for p in products}
+    return await _enrich(db, products_with_hints)
 
 
 async def reset_failed_enrichments(db: AsyncSession) -> int:
