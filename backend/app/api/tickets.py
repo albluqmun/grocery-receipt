@@ -11,14 +11,11 @@ from app.core.database import get_db
 from app.schemas.pagination import PaginatedResponse
 from app.schemas.receipt import ReceiptUploadResponse
 from app.schemas.ticket import TicketRead
+from app.services import gemini as gemini_service
+from app.services import receipt as receipt_service
 from app.services import ticket as ticket_service
-from app.services.gemini import ReceiptParseError, extract_receipt_from_pdf
-from app.services.receipt import (
-    InvalidPdfError,
-    compute_pdf_hash,
-    process_extracted_receipt,
-    validate_pdf_bytes,
-)
+from app.services.gemini import ReceiptParseError
+from app.services.receipt import InvalidPdfError
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +42,7 @@ async def upload_ticket(
     pdf_bytes = await file.read()
 
     try:
-        validate_pdf_bytes(pdf_bytes)
+        receipt_service.validate_pdf_bytes(pdf_bytes)
     except InvalidPdfError as exc:
         detail = (
             "El archivo no es un PDF válido"
@@ -54,7 +51,7 @@ async def upload_ticket(
         )
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detail)
 
-    pdf_hash = compute_pdf_hash(pdf_bytes)
+    pdf_hash = receipt_service.compute_pdf_hash(pdf_bytes)
 
     existing = await ticket_service.find_by_pdf_hash(db, pdf_hash)
     if existing:
@@ -62,7 +59,7 @@ async def upload_ticket(
         return ReceiptUploadResponse.duplicate_from(existing)
 
     try:
-        extracted = await extract_receipt_from_pdf(pdf_bytes)
+        extracted = await gemini_service.extract_receipt_from_pdf(pdf_bytes)
     except GeminiAPIError:
         logger.exception("Gemini API error during PDF extraction")
         raise HTTPException(
@@ -77,7 +74,7 @@ async def upload_ticket(
             "Verifique que el PDF es un ticket de supermercado válido.",
         )
 
-    return await process_extracted_receipt(db, extracted, pdf_hash)
+    return await receipt_service.process_extracted_receipt(db, extracted, pdf_hash)
 
 
 @router.get("", response_model=PaginatedResponse[TicketRead])

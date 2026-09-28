@@ -567,7 +567,7 @@ class TestEnrichPending:
 
 
 class TestEnrichEndpoints:
-    @patch("app.api.products.enrich_pending", new_callable=AsyncMock)
+    @patch("app.services.enrichment.enrich_pending", new_callable=AsyncMock)
     async def test_batch_enrich(self, mock_enrich: AsyncMock, client: AsyncClient):
         mock_enrich.return_value = EnrichmentResult(processed=2, enriched=1, not_found=1, skipped=0)
 
@@ -579,7 +579,7 @@ class TestEnrichEndpoints:
         assert body["enriched"] == 1
         assert body["not_found"] == 1
 
-    @patch("app.api.products.enrich_one", new_callable=AsyncMock)
+    @patch("app.services.enrichment.enrich_one", new_callable=AsyncMock)
     async def test_single_enrich(
         self, mock_enrich: AsyncMock, client: AsyncClient, db_session: AsyncSession
     ):

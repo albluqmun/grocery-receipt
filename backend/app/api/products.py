@@ -11,8 +11,8 @@ from app.schemas.enrichment import EnrichmentResult, ResetResult
 from app.schemas.pagination import PaginatedResponse
 from app.schemas.product import ProductCategoryAdd, ProductCreate, ProductRead, ProductUpdate
 from app.services import category as category_service
+from app.services import enrichment as enrichment_service
 from app.services import product as product_service
-from app.services.enrichment import enrich_one, enrich_pending, reset_failed_enrichments
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -38,14 +38,14 @@ async def batch_enrich_products(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_gemini),
 ):
-    return await enrich_pending(db, limit=limit)
+    return await enrichment_service.enrich_pending(db, limit=limit)
 
 
 @router.post("/enrich/reset", response_model=ResetResult)
-async def reset_failed_enrichments_endpoint(
+async def reset_failed_enrichments(
     db: AsyncSession = Depends(get_db),
 ):
-    count = await reset_failed_enrichments(db)
+    count = await enrichment_service.reset_failed_enrichments(db)
     return ResetResult(reset=count)
 
 
@@ -58,7 +58,7 @@ async def single_enrich_product(
     product = await product_service.get_by_id(db, product_id)
     if not product:
         raise not_found("Producto")
-    return await enrich_one(db, product)
+    return await enrichment_service.enrich_one(db, product)
 
 
 @router.post("/{product_id}/categories", response_model=ProductRead, status_code=status.HTTP_200_OK)
