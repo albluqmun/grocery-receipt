@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product import Product
@@ -19,9 +19,21 @@ async def get_by_id(db: AsyncSession, product_id: uuid.UUID) -> Product | None:
     return await db.get(Product, product_id)
 
 
-async def get_list(db: AsyncSession, skip: int = 0, limit: int = 20) -> tuple[list[Product], int]:
-    total = await db.scalar(select(func.count()).select_from(Product))
-    result = await db.execute(select(Product).order_by(Product.name).offset(skip).limit(limit))
+async def get_list(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 20,
+    q: str | None = None,
+) -> tuple[list[Product], int]:
+    stmt = select(Product)
+    count_stmt = select(func.count()).select_from(Product)
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        condition = or_(Product.name.ilike(pattern), Product.off_name.ilike(pattern))
+        stmt = stmt.where(condition)
+        count_stmt = count_stmt.where(condition)
+    total = await db.scalar(count_stmt)
+    result = await db.execute(stmt.order_by(Product.name).offset(skip).limit(limit))
     return list(result.scalars().all()), total or 0
 
 
