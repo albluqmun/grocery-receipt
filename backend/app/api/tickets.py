@@ -56,7 +56,7 @@ async def upload_ticket(
     existing = await ticket_service.find_by_pdf_hash(db, pdf_hash)
     if existing:
         logger.info("Duplicate PDF (hash match), existing ticket: %s", existing.id)
-        return ReceiptUploadResponse.duplicate_from(existing)
+        return ticket_service.receipt_from_duplicate(existing)
 
     try:
         extracted = await gemini_service.extract_receipt_from_pdf(pdf_bytes)
