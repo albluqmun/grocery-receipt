@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from functools import lru_cache
 
 from google import genai
 from google.genai import types
@@ -50,14 +51,9 @@ EXTRACTION_PROMPT = (
 )
 
 
-_client: genai.Client | None = None
-
-
+@lru_cache(maxsize=1)
 def _get_client() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=settings.gemini_api_key)
-    return _client
+    return genai.Client(api_key=settings.gemini_api_key)
 
 
 _UNIT_SUFFIX_RE = re.compile(r'"(\d+(?:[.,]\d+)?)\s*(?:kg|€/kg|g|ml|l|ud)"', re.IGNORECASE)

@@ -1,5 +1,6 @@
 import asyncio
 import io
+from functools import lru_cache
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -18,18 +19,13 @@ class DriveFile(BaseModel):
     name: str
 
 
-_service = None
-
-
+@lru_cache(maxsize=1)
 def _get_service():
     """Lazily initialize the Google Drive API service (singleton)."""
-    global _service
-    if _service is None:
-        credentials = service_account.Credentials.from_service_account_file(
-            settings.google_drive_credentials_path, scopes=SCOPES
-        )
-        _service = build("drive", "v3", credentials=credentials)
-    return _service
+    credentials = service_account.Credentials.from_service_account_file(
+        settings.google_drive_credentials_path, scopes=SCOPES
+    )
+    return build("drive", "v3", credentials=credentials)
 
 
 def _list_pdf_files_sync(folder_id: str) -> list[DriveFile]:
