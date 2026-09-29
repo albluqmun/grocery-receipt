@@ -1,24 +1,21 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from google.genai.errors import APIError as GeminiAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_gemini
 from app.api.exceptions import not_found
 from app.core.database import get_db
-from app.schemas.pagination import PaginatedResponse
+from app.schemas.pagination import PaginatedResponse, Pagination, pagination_params
 from app.schemas.receipt import ReceiptUploadResponse
 from app.schemas.ticket import TicketRead
+from app.services import gemini as gemini_service
+from app.services import receipt as receipt_service
 from app.services import ticket as ticket_service
-from app.services.gemini import ReceiptParseError, extract_receipt_from_pdf
-from app.services.receipt import (
-    compute_pdf_hash,
-    find_by_pdf_hash,
-    process_extracted_receipt,
-    validate_pdf_bytes,
-)
+from app.services.gemini import ReceiptParseError
+from app.services.receipt import InvalidPdfError
 
 logger = logging.getLogger(__name__)
 
@@ -44,22 +41,25 @@ async def upload_ticket(
 
     pdf_bytes = await file.read()
 
-    validation_error = validate_pdf_bytes(pdf_bytes)
-    if validation_error:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=validation_error,
+    try:
+        receipt_service.validate_pdf_bytes(pdf_bytes)
+    except InvalidPdfError as exc:
+        detail = (
+            "El archivo no es un PDF válido"
+            if str(exc) == "not_pdf"
+            else "El archivo excede el tamaño máximo de 10 MB"
         )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detail)
 
-    pdf_hash = compute_pdf_hash(pdf_bytes)
+    pdf_hash = receipt_service.compute_pdf_hash(pdf_bytes)
 
-    existing = await find_by_pdf_hash(db, pdf_hash)
+    existing = await ticket_service.find_by_pdf_hash(db, pdf_hash)
     if existing:
         logger.info("Duplicate PDF (hash match), existing ticket: %s", existing.id)
-        return ReceiptUploadResponse.duplicate_from(existing)
+        return ticket_service.receipt_from_duplicate(existing)
 
     try:
-        extracted = await extract_receipt_from_pdf(pdf_bytes)
+        extracted = await gemini_service.extract_receipt_from_pdf(pdf_bytes)
     except GeminiAPIError:
         logger.exception("Gemini API error during PDF extraction")
         raise HTTPException(
@@ -74,17 +74,16 @@ async def upload_ticket(
             "Verifique que el PDF es un ticket de supermercado válido.",
         )
 
-    return await process_extracted_receipt(db, extracted, pdf_hash)
+    return await receipt_service.process_extracted_receipt(db, extracted, pdf_hash)
 
 
 @router.get("", response_model=PaginatedResponse[TicketRead])
 async def list_tickets(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    pagination: Pagination = Depends(pagination_params),
     db: AsyncSession = Depends(get_db),
 ):
-    items, total = await ticket_service.get_list(db, skip=skip, limit=limit)
-    return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
+    items, total = await ticket_service.get_list(db, skip=pagination.skip, limit=pagination.limit)
+    return PaginatedResponse(items=items, total=total, skip=pagination.skip, limit=pagination.limit)
 
 
 @router.get("/{ticket_id}", response_model=TicketRead)

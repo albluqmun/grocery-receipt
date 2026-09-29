@@ -46,8 +46,8 @@ app.include_router(products_router, prefix="/api/v1")
 app.include_router(tickets_router, prefix="/api/v1")
 app.include_router(google_drive_router, prefix="/api/v1")
 
-if not settings.gemini_api_key:
+if not settings.gemini_enabled:
     logger.warning("GEMINI_API_KEY not set — PDF ticket extraction will be unavailable")
 
-if not settings.google_drive_credentials_path or not settings.google_drive_folder_id:
+if not settings.google_drive_enabled:
     logger.warning("Google Drive not configured — Drive sync will be unavailable")

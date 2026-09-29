@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.category import Category
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductUpdate
 
@@ -43,3 +44,29 @@ async def delete(db: AsyncSession, product_id: uuid.UUID) -> bool:
     await db.delete(product)
     await db.flush()
     return True
+
+
+class CategoryAlreadyAssignedError(Exception):
+    """Raised when a product already has the category being added."""
+
+
+class CategoryNotAssignedError(Exception):
+    """Raised when trying to remove a category the product doesn't have."""
+
+
+async def add_category(db: AsyncSession, product: Product, category: Category) -> Product:
+    await db.refresh(product, ["categories"])
+    if category in product.categories:
+        raise CategoryAlreadyAssignedError
+    product.categories.append(category)
+    await db.flush()
+    await db.refresh(product)
+    return product
+
+
+async def remove_category(db: AsyncSession, product: Product, category: Category) -> None:
+    await db.refresh(product, ["categories"])
+    if category not in product.categories:
+        raise CategoryNotAssignedError
+    product.categories.remove(category)
+    await db.flush()

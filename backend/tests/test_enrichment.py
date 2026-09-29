@@ -14,11 +14,16 @@ from app.models.line_item import LineItem
 from app.models.product import Product
 from app.models.supermarket import Supermarket
 from app.models.ticket import Ticket
-from app.schemas.enrichment import EnrichmentResult, OFFCandidate
+from app.schemas.enrichment import EnrichmentResult
 from app.services.enrichment import enrich_pending, enrich_products, reset_failed_enrichments
 from app.services.gemini import match_products_with_off
-from app.services.openfoodfacts import _simplify_search_terms, search_products
-from tests.conftest import make_extracted_receipt, unique_pdf
+from app.services.openfoodfacts import (
+    OFFCandidate,
+    _simplify_search_terms,
+    search_many,
+    search_products,
+)
+from tests.conftest import unique_pdf
 
 
 @pytest.fixture(autouse=True)
@@ -240,6 +245,43 @@ class TestSearchProducts:
         mock_client.get.assert_called_once()
 
 
+class TestSearchMany:
+    @patch("app.services.openfoodfacts.asyncio.sleep", new_callable=AsyncMock)
+    @patch("app.services.openfoodfacts.httpx.AsyncClient")
+    async def test_searches_all_and_respects_rate_limit(
+        self, mock_client_cls: MagicMock, mock_sleep: AsyncMock
+    ):
+        mock_response = MagicMock()
+        mock_response.json.return_value = _off_api_response([_off_product()])
+        mock_response.raise_for_status = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        id_a, id_b = uuid.uuid4(), uuid.uuid4()
+        result = await search_many({id_a: "cacahuete", id_b: "leche"})
+
+        assert set(result.keys()) == {id_a, id_b}
+        assert mock_sleep.call_count == 1  # delay only between requests, not before the first
+
+    @patch("app.services.openfoodfacts.httpx.AsyncClient")
+    async def test_omits_ids_with_no_candidates(self, mock_client_cls: MagicMock):
+        empty_response = MagicMock()
+        empty_response.json.return_value = _off_api_response([])
+        empty_response.raise_for_status = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=empty_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        result = await search_many({uuid.uuid4(): "xyznonexistent"})
+
+        assert result == {}
+
+
 # ---------------------------------------------------------------------------
 # Gemini matching tests
 # ---------------------------------------------------------------------------
@@ -273,7 +315,7 @@ class TestMatchProductsWithOff:
             ],
         }
 
-        result = await match_products_with_off(candidates, supermarket_name="MERCADONA")
+        result = await match_products_with_off(candidates)
 
         assert result["CACAHUETE SIN SAL"] == "8480000340313"
         assert result["FILETE PECHUGA"] is None
@@ -297,7 +339,7 @@ class TestMatchProductsWithOff:
             ],
         }
 
-        result = await match_products_with_off(candidates, supermarket_name="MERCADONA")
+        result = await match_products_with_off(candidates)
 
         assert result == {}
 
@@ -316,20 +358,19 @@ class TestMatchProductsWithOff:
 
 class TestEnrichProducts:
     @patch("app.services.enrichment.match_products_with_off", new_callable=AsyncMock)
-    @patch("app.services.enrichment.search_products", new_callable=AsyncMock)
+    @patch("app.services.enrichment.search_many", new_callable=AsyncMock)
     async def test_enriches_product_successfully(
         self, mock_search: AsyncMock, mock_match: AsyncMock, db_session: AsyncSession
     ):
         product = await _create_product(db_session)
 
-        mock_search.return_value = [
-            OFFCandidate(
-                code="8480000340313",
-                product_name="Cacahuete tostado 0% sal",
-                categories="Cacahuetes,Frutos secos",
-                image_url="https://images.openfoodfacts.org/example.jpg",
-            ),
-        ]
+        candidate = OFFCandidate(
+            code="8480000340313",
+            product_name="Cacahuete tostado 0% sal",
+            categories="Cacahuetes,Frutos secos",
+            image_url="https://images.openfoodfacts.org/example.jpg",
+        )
+        mock_search.return_value = {product.id: [candidate]}
         mock_match.return_value = {"CACAHUETE SIN SAL (MERCADONA)": "8480000340313"}
 
         result = await enrich_products(db_session, [product], supermarket_hint="MERCADONA")
@@ -344,15 +385,13 @@ class TestEnrichProducts:
         assert product.off_synced_at is not None
 
     @patch("app.services.enrichment.match_products_with_off", new_callable=AsyncMock)
-    @patch("app.services.enrichment.search_products", new_callable=AsyncMock)
+    @patch("app.services.enrichment.search_many", new_callable=AsyncMock)
     async def test_sets_synced_at_when_no_match(
         self, mock_search: AsyncMock, mock_match: AsyncMock, db_session: AsyncSession
     ):
         product = await _create_product(db_session)
 
-        mock_search.return_value = [
-            OFFCandidate(code="999", product_name="Unrelated product"),
-        ]
+        mock_search.return_value = {product.id: [OFFCandidate(code="999", product_name="X")]}
         mock_match.return_value = {"CACAHUETE SIN SAL": None}
 
         result = await enrich_products(db_session, [product])
@@ -364,7 +403,7 @@ class TestEnrichProducts:
         assert product.off_synced_at is not None
 
     @patch("app.services.enrichment.match_products_with_off", new_callable=AsyncMock)
-    @patch("app.services.enrichment.search_products", new_callable=AsyncMock)
+    @patch("app.services.enrichment.search_many", new_callable=AsyncMock)
     async def test_skips_already_synced_products(
         self, mock_search: AsyncMock, mock_match: AsyncMock, db_session: AsyncSession
     ):
@@ -379,15 +418,15 @@ class TestEnrichProducts:
         mock_search.assert_not_called()
 
     @patch("app.services.enrichment.match_products_with_off", new_callable=AsyncMock)
-    @patch("app.services.enrichment.search_products", new_callable=AsyncMock)
+    @patch("app.services.enrichment.search_many", new_callable=AsyncMock)
     async def test_gemini_failure_leaves_synced_at_null(
         self, mock_search: AsyncMock, mock_match: AsyncMock, db_session: AsyncSession
     ):
         product = await _create_product(db_session)
 
-        mock_search.return_value = [
-            OFFCandidate(code="8480000340313", product_name="Cacahuete"),
-        ]
+        mock_search.return_value = {
+            product.id: [OFFCandidate(code="8480000340313", product_name="Cacahuete")]
+        }
         mock_match.return_value = {}  # Gemini failed
 
         result = await enrich_products(db_session, [product])
@@ -396,12 +435,12 @@ class TestEnrichProducts:
         assert product.off_synced_at is None
 
     @patch("app.services.enrichment.match_products_with_off", new_callable=AsyncMock)
-    @patch("app.services.enrichment.search_products", new_callable=AsyncMock)
+    @patch("app.services.enrichment.search_many", new_callable=AsyncMock)
     async def test_no_off_results_sets_synced_at(
         self, mock_search: AsyncMock, mock_match: AsyncMock, db_session: AsyncSession
     ):
         product = await _create_product(db_session)
-        mock_search.return_value = []  # OFF returned nothing
+        mock_search.return_value = {}  # OFF returned nothing
 
         result = await enrich_products(db_session, [product])
 
@@ -412,20 +451,22 @@ class TestEnrichProducts:
         mock_match.assert_not_called()  # No candidates = no Gemini call
 
     @patch("app.services.enrichment.match_products_with_off", new_callable=AsyncMock)
-    @patch("app.services.enrichment.search_products", new_callable=AsyncMock)
+    @patch("app.services.enrichment.search_many", new_callable=AsyncMock)
     async def test_assigns_categories_from_off(
         self, mock_search: AsyncMock, mock_match: AsyncMock, db_session: AsyncSession
     ):
         product = await _create_product(db_session)
 
-        mock_search.return_value = [
-            OFFCandidate(
-                code="8480000340313",
-                product_name="Cacahuete tostado 0% sal",
-                categories="Cacahuetes,Frutos secos",
-                image_url="https://example.com/img.jpg",
-            ),
-        ]
+        mock_search.return_value = {
+            product.id: [
+                OFFCandidate(
+                    code="8480000340313",
+                    product_name="Cacahuete tostado 0% sal",
+                    categories="Cacahuetes,Frutos secos",
+                    image_url="https://example.com/img.jpg",
+                )
+            ]
+        }
         mock_match.return_value = {"CACAHUETE SIN SAL": "8480000340313"}
 
         await enrich_products(db_session, [product])
@@ -443,7 +484,7 @@ class TestEnrichProducts:
         assert product_cat_names == {"Cacahuetes", "Frutos secos"}
 
     @patch("app.services.enrichment.match_products_with_off", new_callable=AsyncMock)
-    @patch("app.services.enrichment.search_products", new_callable=AsyncMock)
+    @patch("app.services.enrichment.search_many", new_callable=AsyncMock)
     async def test_reuses_existing_categories(
         self, mock_search: AsyncMock, mock_match: AsyncMock, db_session: AsyncSession
     ):
@@ -454,13 +495,15 @@ class TestEnrichProducts:
 
         product = await _create_product(db_session)
 
-        mock_search.return_value = [
-            OFFCandidate(
-                code="8480000340313",
-                product_name="Cacahuete tostado 0% sal",
-                categories="Cacahuetes,Frutos secos",
-            ),
-        ]
+        mock_search.return_value = {
+            product.id: [
+                OFFCandidate(
+                    code="8480000340313",
+                    product_name="Cacahuete tostado 0% sal",
+                    categories="Cacahuetes,Frutos secos",
+                )
+            ]
+        }
         mock_match.return_value = {"CACAHUETE SIN SAL": "8480000340313"}
 
         await enrich_products(db_session, [product])
@@ -477,20 +520,22 @@ class TestEnrichProducts:
 
 class TestEnrichPending:
     @patch("app.services.enrichment.match_products_with_off", new_callable=AsyncMock)
-    @patch("app.services.enrichment.search_products", new_callable=AsyncMock)
+    @patch("app.services.enrichment.search_many", new_callable=AsyncMock)
     async def test_selects_unsynced_products(
         self, mock_search: AsyncMock, mock_match: AsyncMock, db_session: AsyncSession
     ):
         product = await _create_product_with_ticket(db_session)
 
-        mock_search.return_value = [
-            OFFCandidate(
-                code="8480000340313",
-                product_name="Cacahuete tostado 0% sal",
-                categories="Cacahuetes",
-                image_url="https://example.com/img.jpg",
-            ),
-        ]
+        mock_search.return_value = {
+            product.id: [
+                OFFCandidate(
+                    code="8480000340313",
+                    product_name="Cacahuete tostado 0% sal",
+                    categories="Cacahuetes",
+                    image_url="https://example.com/img.jpg",
+                )
+            ]
+        }
         mock_match.return_value = {"CACAHUETE SIN SAL (MERCADONA)": "8480000340313"}
 
         result = await enrich_pending(db_session, limit=10)
@@ -500,17 +545,17 @@ class TestEnrichPending:
         assert product.off_code == "8480000340313"
 
     @patch("app.services.enrichment.match_products_with_off", new_callable=AsyncMock)
-    @patch("app.services.enrichment.search_products", new_callable=AsyncMock)
+    @patch("app.services.enrichment.search_many", new_callable=AsyncMock)
     async def test_passes_supermarket_name_to_gemini(
         self, mock_search: AsyncMock, mock_match: AsyncMock, db_session: AsyncSession
     ):
-        await _create_product_with_ticket(
+        product = await _create_product_with_ticket(
             db_session, product_name="LECHE ENTERA", supermarket_name="MERCADONA"
         )
 
-        mock_search.return_value = [
-            OFFCandidate(code="848", product_name="Leche entera"),
-        ]
+        mock_search.return_value = {
+            product.id: [OFFCandidate(code="848", product_name="Leche entera")]
+        }
         mock_match.return_value = {"LECHE ENTERA (MERCADONA)": "848"}
 
         await enrich_pending(db_session, limit=10)
@@ -527,7 +572,7 @@ class TestEnrichPending:
 
 
 class TestEnrichEndpoints:
-    @patch("app.api.products.enrich_pending", new_callable=AsyncMock)
+    @patch("app.services.enrichment.enrich_pending", new_callable=AsyncMock)
     async def test_batch_enrich(self, mock_enrich: AsyncMock, client: AsyncClient):
         mock_enrich.return_value = EnrichmentResult(processed=2, enriched=1, not_found=1, skipped=0)
 
@@ -539,7 +584,7 @@ class TestEnrichEndpoints:
         assert body["enriched"] == 1
         assert body["not_found"] == 1
 
-    @patch("app.api.products.enrich_products", new_callable=AsyncMock)
+    @patch("app.services.enrichment.enrich_one", new_callable=AsyncMock)
     async def test_single_enrich(
         self, mock_enrich: AsyncMock, client: AsyncClient, db_session: AsyncSession
     ):
@@ -561,48 +606,6 @@ class TestEnrichEndpoints:
         settings.gemini_api_key = ""
         resp = await client.post(f"{PRODUCTS_BASE}/enrich")
         assert resp.status_code == 503
-
-
-# ---------------------------------------------------------------------------
-# Ticket upload enrichment tests
-# ---------------------------------------------------------------------------
-
-
-class TestTicketUploadEnrichment:
-    @patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
-    @patch("app.services.receipt.enrich_products", new_callable=AsyncMock)
-    async def test_upload_triggers_enrichment(
-        self,
-        mock_enrich: AsyncMock,
-        mock_extract: AsyncMock,
-        client: AsyncClient,
-    ):
-        mock_extract.return_value = make_extracted_receipt()
-        mock_enrich.return_value = EnrichmentResult(processed=1, enriched=1, not_found=0, skipped=0)
-
-        resp = await client.post(f"{TICKETS_BASE}/upload", files=_pdf_upload())
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["products_enriched"] == 1
-        mock_enrich.assert_called_once()
-
-    @patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
-    @patch("app.services.receipt.enrich_products", new_callable=AsyncMock)
-    async def test_upload_succeeds_when_enrichment_fails(
-        self,
-        mock_enrich: AsyncMock,
-        mock_extract: AsyncMock,
-        client: AsyncClient,
-    ):
-        mock_extract.return_value = make_extracted_receipt()
-        mock_enrich.side_effect = Exception("Gemini down")
-
-        resp = await client.post(f"{TICKETS_BASE}/upload", files=_pdf_upload())
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["products_enriched"] == 0
 
 
 # ---------------------------------------------------------------------------

@@ -1,12 +1,22 @@
 import asyncio
 import logging
 import re
+import uuid
 
 import httpx
-
-from app.schemas.enrichment import OFFCandidate
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+class OFFCandidate(BaseModel):
+    """A product candidate returned by Open Food Facts search."""
+
+    code: str
+    product_name: str
+    categories: str | None = None
+    image_url: str | None = None
+
 
 OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
 OFF_FIELDS = "code,product_name,categories,image_url"
@@ -144,3 +154,20 @@ async def search_products(
         return await _do_search(simplified, max_results, client)
 
     return []
+
+
+async def search_many(names: dict[uuid.UUID, str]) -> dict[uuid.UUID, list[OFFCandidate]]:
+    """Search Open Food Facts for several products, respecting the rate limit between calls.
+
+    Owns the HTTP client lifecycle and the inter-request delay so callers don't have to.
+    Returns only the ids that had at least one candidate.
+    """
+    results: dict[uuid.UUID, list[OFFCandidate]] = {}
+    async with httpx.AsyncClient(timeout=OFF_TIMEOUT) as client:
+        for i, (key, name) in enumerate(names.items()):
+            if i > 0:
+                await asyncio.sleep(REQUEST_DELAY)
+            candidates = await search_products(name, client=client)
+            if candidates:
+                results[key] = candidates
+    return results

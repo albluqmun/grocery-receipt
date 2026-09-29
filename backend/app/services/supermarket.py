@@ -18,6 +18,11 @@ async def get_by_id(db: AsyncSession, supermarket_id: uuid.UUID) -> Supermarket 
     return await db.get(Supermarket, supermarket_id)
 
 
+async def get_by_name(db: AsyncSession, name: str) -> Supermarket | None:
+    result = await db.execute(select(Supermarket).where(Supermarket.name == name))
+    return result.scalar_one_or_none()
+
+
 async def get_list(
     db: AsyncSession, skip: int = 0, limit: int = 20
 ) -> tuple[list[Supermarket], int]:

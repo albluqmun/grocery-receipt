@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from functools import lru_cache
 
 from google import genai
 from google.genai import types
@@ -8,8 +9,8 @@ from google.genai.errors import APIError as GeminiAPIError
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.schemas.enrichment import OFFCandidate
 from app.schemas.receipt import ExtractedReceipt
+from app.services.openfoodfacts import OFFCandidate
 
 
 class ReceiptParseError(ValueError):
@@ -50,14 +51,9 @@ EXTRACTION_PROMPT = (
 )
 
 
-_client: genai.Client | None = None
-
-
+@lru_cache(maxsize=1)
 def _get_client() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=settings.gemini_api_key)
-    return _client
+    return genai.Client(api_key=settings.gemini_api_key)
 
 
 _UNIT_SUFFIX_RE = re.compile(r'"(\d+(?:[.,]\d+)?)\s*(?:kg|€/kg|g|ml|l|ud)"', re.IGNORECASE)
@@ -118,7 +114,6 @@ MATCHING_PROMPT_TEMPLATE = (
     "to Open Food Facts product entries.\n\n"
     "For each product below, choose the BEST matching Open Food Facts candidate "
     "or respond with null if none is a good match.\n"
-    "{supermarket_hint}\n"
     "Respond ONLY with a JSON object mapping each product name to the chosen "
     "EAN code (string) or null. Example: "
     '{{"LECHE ENTERA": "8480000123456", "UNKNOWN PRODUCT": null}}\n\n'
@@ -128,18 +123,10 @@ MATCHING_PROMPT_TEMPLATE = (
 
 async def match_products_with_off(
     candidates: dict[str, list[OFFCandidate]],
-    supermarket_name: str | None = None,
 ) -> dict[str, str | None]:
     """Use Gemini to select the best OFF match for each product. Returns empty dict on error."""
     if not candidates:
         return {}
-
-    supermarket_hint = ""
-    if supermarket_name:
-        supermarket_hint = (
-            f"These products were purchased at {supermarket_name}. "
-            "Consider this when choosing (e.g., Mercadona sells Hacendado brand)."
-        )
 
     lines = []
     for i, (name, options) in enumerate(candidates.items(), 1):
@@ -149,12 +136,10 @@ async def match_products_with_off(
         lines.append(f"{i}. {name} -> [{options_str}]")
 
     products_block = "\n".join(lines)
-    prompt = MATCHING_PROMPT_TEMPLATE.format(
-        supermarket_hint=supermarket_hint, products_block=products_block
-    )
+    prompt = MATCHING_PROMPT_TEMPLATE.format(products_block=products_block)
 
+    client = _get_client()
     try:
-        client = _get_client()
         response = await client.aio.models.generate_content(
             model=settings.gemini_model,
             contents=[prompt],
@@ -162,10 +147,12 @@ async def match_products_with_off(
                 response_mime_type="application/json",
             ),
         )
-        return json.loads(response.text)
     except GeminiAPIError:
         logger.warning("Gemini API error during OFF matching", exc_info=True)
         return {}
+
+    try:
+        return json.loads(response.text)
     except (json.JSONDecodeError, ValueError):
         logger.error("Failed to parse Gemini matching response: %s", response.text)
         return {}

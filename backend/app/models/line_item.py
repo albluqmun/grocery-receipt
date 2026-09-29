@@ -1,11 +1,16 @@
 import uuid
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.models.product import Product
+    from app.models.ticket import Ticket
 
 
 class LineItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -19,5 +24,5 @@ class LineItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     line_total: Mapped[Decimal] = mapped_column(Numeric(10, 2))
 
-    ticket = relationship("Ticket", back_populates="lines", lazy="selectin")
-    product = relationship("Product", lazy="selectin")
+    ticket: Mapped["Ticket"] = relationship("Ticket", back_populates="lines", lazy="raise")
+    product: Mapped["Product"] = relationship("Product", back_populates="line_items", lazy="raise")

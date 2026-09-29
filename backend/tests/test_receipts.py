@@ -28,7 +28,7 @@ def _pdf_upload(content: bytes | None = None, content_type: str = "application/p
     return {"file": ("ticket.pdf", content or unique_pdf(), content_type)}
 
 
-@patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
+@patch("app.services.gemini.extract_receipt_from_pdf", new_callable=AsyncMock)
 async def test_upload_success(mock_extract: AsyncMock, client: AsyncClient):
     mock_extract.return_value = make_extracted_receipt(total=Decimal("62.00"))
     resp = await client.post(f"{BASE}/upload", files=_pdf_upload())
@@ -45,7 +45,7 @@ async def test_upload_success(mock_extract: AsyncMock, client: AsyncClient):
     assert body["duplicate"] is False
 
 
-@patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
+@patch("app.services.gemini.extract_receipt_from_pdf", new_callable=AsyncMock)
 async def test_upload_creates_entities_in_db(
     mock_extract: AsyncMock, client: AsyncClient, db_session: AsyncSession
 ):
@@ -83,14 +83,14 @@ async def test_upload_rejects_spoofed_pdf(client: AsyncClient):
     assert "PDF válido" in resp.json()["detail"]
 
 
-@patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
+@patch("app.services.gemini.extract_receipt_from_pdf", new_callable=AsyncMock)
 async def test_upload_gemini_api_error(mock_extract: AsyncMock, client: AsyncClient):
     mock_extract.side_effect = GeminiAPIError(code=500, response_json={})
     resp = await client.post(f"{BASE}/upload", files=_pdf_upload())
     assert resp.status_code == 502
 
 
-@patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
+@patch("app.services.gemini.extract_receipt_from_pdf", new_callable=AsyncMock)
 async def test_upload_gemini_parse_error(mock_extract: AsyncMock, client: AsyncClient):
     from app.services.gemini import ReceiptParseError
 
@@ -107,7 +107,7 @@ async def test_upload_missing_api_key(client: AsyncClient):
     assert "GEMINI_API_KEY" in resp.json()["detail"]
 
 
-@patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
+@patch("app.services.gemini.extract_receipt_from_pdf", new_callable=AsyncMock)
 async def test_upload_reuses_existing_supermarket(
     mock_extract: AsyncMock, client: AsyncClient, db_session: AsyncSession
 ):
@@ -124,7 +124,7 @@ async def test_upload_reuses_existing_supermarket(
     assert len(tickets) == 2
 
 
-@patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
+@patch("app.services.gemini.extract_receipt_from_pdf", new_callable=AsyncMock)
 async def test_upload_reuses_existing_products(mock_extract: AsyncMock, client: AsyncClient):
     mock_extract.return_value = make_extracted_receipt()
     await client.post(f"{BASE}/upload", files=_pdf_upload())
@@ -138,7 +138,7 @@ async def test_upload_reuses_existing_products(mock_extract: AsyncMock, client: 
     assert body["products_matched"] == 1
 
 
-@patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
+@patch("app.services.gemini.extract_receipt_from_pdf", new_callable=AsyncMock)
 async def test_duplicate_same_pdf_skips_gemini(mock_extract: AsyncMock, client: AsyncClient):
     """Same PDF uploaded twice — second time should skip Gemini and return duplicate."""
     mock_extract.return_value = make_extracted_receipt()
@@ -156,7 +156,7 @@ async def test_duplicate_same_pdf_skips_gemini(mock_extract: AsyncMock, client: 
     assert mock_extract.call_count == 1
 
 
-@patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
+@patch("app.services.gemini.extract_receipt_from_pdf", new_callable=AsyncMock)
 async def test_duplicate_same_invoice_different_pdf(mock_extract: AsyncMock, client: AsyncClient):
     """Different PDF but same invoice number — should detect duplicate via invoice."""
     mock_extract.return_value = make_extracted_receipt(invoice_number="3823-014-675403")

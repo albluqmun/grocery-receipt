@@ -6,13 +6,6 @@ from pydantic import BaseModel
 from app.schemas.receipt import ReceiptUploadResponse
 
 
-class DriveFile(BaseModel):
-    """Metadata of a file in Google Drive."""
-
-    id: str
-    name: str
-
-
 class SyncFileStatus(StrEnum):
     PROCESSED = "processed"
     DUPLICATE = "duplicate"

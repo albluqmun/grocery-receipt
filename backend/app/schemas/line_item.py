@@ -13,7 +13,7 @@ class LineItemCreate(BaseModel):
 
 
 class LineItemUpdate(BaseModel):
-    product_id: uuid.UUID | None = None
+    product_id: uuid.UUID | None = Field(default=None)
     quantity: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=3)
     unit_price: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     line_total: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)

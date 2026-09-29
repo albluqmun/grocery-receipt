@@ -1,17 +1,16 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import require_gemini
-from app.core.config import settings
+from app.api.dependencies import require_gemini, require_google_drive
 from app.core.database import get_db
 from app.schemas.google_drive import DriveSyncResponse
-from app.services.google_drive import sync_drive_folder
+from app.services import google_drive as google_drive_service
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/tickets/drive", tags=["google-drive"])
+router = APIRouter(prefix="/tickets/drive", tags=["tickets"])
 
 
 @router.post(
@@ -22,13 +21,7 @@ router = APIRouter(prefix="/tickets/drive", tags=["google-drive"])
 )
 async def sync_from_drive(
     db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_gemini),
+    _gemini: None = Depends(require_gemini),
+    _drive: None = Depends(require_google_drive),
 ):
-    if not settings.google_drive_credentials_path or not settings.google_drive_folder_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Servicio de Google Drive no configurado "
-            "(faltan GOOGLE_DRIVE_CREDENTIALS_PATH o GOOGLE_DRIVE_FOLDER_ID)",
-        )
-
-    return await sync_drive_folder(db)
+    return await google_drive_service.sync_drive_folder(db)

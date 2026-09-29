@@ -1,8 +1,13 @@
+from typing import TYPE_CHECKING
+
 from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.models.ticket import Ticket
 
 
 class Supermarket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -10,3 +15,7 @@ class Supermarket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     name: Mapped[str] = mapped_column(String(200), unique=True)
     locality: Mapped[str | None] = mapped_column(String(200))
+
+    tickets: Mapped[list["Ticket"]] = relationship(
+        "Ticket", back_populates="supermarket", lazy="raise", passive_deletes="all"
+    )

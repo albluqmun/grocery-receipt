@@ -1,13 +1,13 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.exceptions import conflict, not_found
 from app.core.database import get_db
 from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate
-from app.schemas.pagination import PaginatedResponse
+from app.schemas.pagination import PaginatedResponse, Pagination, pagination_params
 from app.services import category as category_service
 
 router = APIRouter(prefix="/categories", tags=["categories"])
@@ -23,12 +23,11 @@ async def create_category(data: CategoryCreate, db: AsyncSession = Depends(get_d
 
 @router.get("", response_model=PaginatedResponse[CategoryRead])
 async def list_categories(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    pagination: Pagination = Depends(pagination_params),
     db: AsyncSession = Depends(get_db),
 ):
-    items, total = await category_service.get_list(db, skip=skip, limit=limit)
-    return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
+    items, total = await category_service.get_list(db, skip=pagination.skip, limit=pagination.limit)
+    return PaginatedResponse(items=items, total=total, skip=pagination.skip, limit=pagination.limit)
 
 
 @router.get("/{category_id}", response_model=CategoryRead)
