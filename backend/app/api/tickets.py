@@ -60,6 +60,7 @@ async def upload_ticket(
 
     try:
         extracted = await extract_receipt_from_pdf(pdf_bytes)
+        return await process_extracted_receipt(db, extracted, pdf_hash)
     except GeminiAPIError:
         logger.exception("Gemini API error during PDF extraction")
         raise HTTPException(
@@ -73,8 +74,6 @@ async def upload_ticket(
             detail="No se pudo extraer datos del ticket. "
             "Verifique que el PDF es un ticket de supermercado válido.",
         )
-
-    return await process_extracted_receipt(db, extracted, pdf_hash)
 
 
 @router.get("", response_model=PaginatedResponse[TicketRead])

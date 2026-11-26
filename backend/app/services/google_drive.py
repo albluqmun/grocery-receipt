@@ -22,6 +22,7 @@ from app.services.receipt import (
     compute_pdf_hash,
     find_by_pdf_hash,
     get_existing_drive_file_ids,
+    mark_drive_file_processed,
     process_extracted_receipt,
     validate_pdf_bytes,
 )
@@ -101,6 +102,7 @@ async def _process_single_file(db: AsyncSession, df: DriveFile) -> DriveSyncFile
 
     validation_error = validate_pdf_bytes(pdf_bytes)
     if validation_error:
+        await mark_drive_file_processed(db, df.id, SyncErrorCode.INVALID_PDF)
         return DriveSyncFileResult(
             file_name=df.name,
             status=SyncFileStatus.ERROR,
@@ -113,6 +115,7 @@ async def _process_single_file(db: AsyncSession, df: DriveFile) -> DriveSyncFile
     existing = await find_by_pdf_hash(db, pdf_hash)
     if existing:
         logger.info("Duplicate PDF hash for '%s', ticket=%s", df.name, existing.id)
+        await mark_drive_file_processed(db, df.id, SyncFileStatus.DUPLICATE)
         return DriveSyncFileResult(
             file_name=df.name,
             status=SyncFileStatus.DUPLICATE,
@@ -122,6 +125,8 @@ async def _process_single_file(db: AsyncSession, df: DriveFile) -> DriveSyncFile
     extracted = await extract_receipt_from_pdf(pdf_bytes)
     response = await process_extracted_receipt(db, extracted, pdf_hash, drive_file_id=df.id)
 
+    if response.duplicate:
+        await mark_drive_file_processed(db, df.id, SyncFileStatus.DUPLICATE)
     result_status = SyncFileStatus.DUPLICATE if response.duplicate else SyncFileStatus.PROCESSED
     return DriveSyncFileResult(file_name=df.name, status=result_status, detail=response)
 
@@ -153,7 +158,9 @@ async def sync_drive_folder(db: AsyncSession) -> DriveSyncResponse:
     results: list[DriveSyncFileResult] = []
     for df in pending:
         try:
-            result = await _process_single_file(db, df)
+            # Savepoint per file: a failure rolls back only this file's partial writes
+            async with db.begin_nested():
+                result = await _process_single_file(db, df)
         except GeminiAPIError as exc:
             logger.exception("Gemini API error for '%s' (id=%s)", df.name, df.id)
             error_code = SyncErrorCode.RATE_LIMIT if exc.code == 429 else SyncErrorCode.GEMINI_ERROR
