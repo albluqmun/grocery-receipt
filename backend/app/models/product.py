@@ -10,21 +10,26 @@ product_categories = Table(
     "product_categories",
     Base.metadata,
     Column("product_id", ForeignKey("products.id", ondelete="CASCADE"), primary_key=True),
-    Column("category_id", ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "category_id",
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    ),
 )
 
 
 class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "products"
 
-    name: Mapped[str] = mapped_column(String(300))
+    name: Mapped[str] = mapped_column(String(300), index=True)
     brand: Mapped[str | None] = mapped_column(String(200))
 
     # Open Food Facts enrichment fields
     off_code: Mapped[str | None] = mapped_column(String(50))
     off_name: Mapped[str | None] = mapped_column(String(300))
     off_image_url: Mapped[str | None] = mapped_column(Text)
-    off_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    off_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     categories = relationship(
         "Category", secondary=product_categories, back_populates="products", lazy="selectin"

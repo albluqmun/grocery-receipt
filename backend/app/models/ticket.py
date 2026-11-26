@@ -1,5 +1,5 @@
+import datetime
 import uuid
-from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import ForeignKey, Numeric, String
@@ -12,7 +12,7 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 class Ticket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "tickets"
 
-    date: Mapped[date]
+    date: Mapped[datetime.date] = mapped_column(index=True)
     supermarket_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("supermarkets.id"), index=True)
     total: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     invoice_number: Mapped[str | None] = mapped_column(String(100), unique=True)
