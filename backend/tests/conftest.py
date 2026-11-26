@@ -82,6 +82,15 @@ def _run_test_migrations() -> None:
     command.upgrade(cfg, "head")
 
 
+@pytest.fixture(autouse=True)
+def _disable_api_key(monkeypatch):
+    """Keep tests hermetic: ignore any API_KEY from the environment.
+
+    Auth tests opt in explicitly by monkeypatching settings.api_key.
+    """
+    monkeypatch.setattr(settings, "api_key", "")
+
+
 @pytest.fixture(scope="session")
 def anyio_backend():
     return "asyncio"

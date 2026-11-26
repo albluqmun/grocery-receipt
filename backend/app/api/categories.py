@@ -18,7 +18,7 @@ async def create_category(data: CategoryCreate, db: AsyncSession = Depends(get_d
     try:
         return await category_service.create(db, data)
     except IntegrityError:
-        raise conflict("Ya existe una categoría con ese nombre")
+        raise conflict("Ya existe una categoría con ese nombre") from None
 
 
 @router.get("", response_model=PaginatedResponse[CategoryRead])
@@ -48,7 +48,7 @@ async def update_category(
     try:
         category = await category_service.update(db, category_id, data)
     except IntegrityError:
-        raise conflict("Ya existe una categoría con ese nombre")
+        raise conflict("Ya existe una categoría con ese nombre") from None
     if not category:
         raise not_found("Categoría")
     return category
@@ -59,6 +59,6 @@ async def delete_category(category_id: uuid.UUID, db: AsyncSession = Depends(get
     try:
         deleted = await category_service.delete(db, category_id)
     except IntegrityError:
-        raise conflict("No se puede eliminar: tiene productos asociados")
+        raise conflict("No se puede eliminar: tiene productos asociados") from None
     if not deleted:
         raise not_found("Categoría")
