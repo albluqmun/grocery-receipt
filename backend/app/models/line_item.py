@@ -19,5 +19,5 @@ class LineItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     line_total: Mapped[Decimal] = mapped_column(Numeric(10, 2))
 
-    ticket = relationship("Ticket", back_populates="lines", lazy="selectin")
+    ticket = relationship("Ticket", back_populates="lines", lazy="raise")
     product = relationship("Product", lazy="selectin")

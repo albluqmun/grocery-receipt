@@ -20,7 +20,8 @@ async def get_by_id(db: AsyncSession, ticket_id: uuid.UUID) -> Ticket | None:
 
 async def get_list(db: AsyncSession, skip: int = 0, limit: int = 20) -> tuple[list[Ticket], int]:
     total = await db.scalar(select(func.count()).select_from(Ticket))
-    result = await db.execute(select(Ticket).order_by(Ticket.date.desc()).offset(skip).limit(limit))
+    stmt = select(Ticket).order_by(Ticket.date.desc(), Ticket.id).offset(skip).limit(limit)
+    result = await db.execute(stmt)
     return list(result.scalars().all()), total or 0
 
 

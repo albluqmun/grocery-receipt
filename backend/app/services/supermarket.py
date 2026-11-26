@@ -23,7 +23,7 @@ async def get_list(
 ) -> tuple[list[Supermarket], int]:
     total = await db.scalar(select(func.count()).select_from(Supermarket))
     result = await db.execute(
-        select(Supermarket).order_by(Supermarket.name).offset(skip).limit(limit)
+        select(Supermarket).order_by(Supermarket.name, Supermarket.id).offset(skip).limit(limit)
     )
     return list(result.scalars().all()), total or 0
 
