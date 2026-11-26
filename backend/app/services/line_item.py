@@ -26,7 +26,9 @@ async def get_list(
 ) -> tuple[list[LineItem], int]:
     base = select(LineItem).where(LineItem.ticket_id == ticket_id)
     total = await db.scalar(select(func.count()).select_from(base.subquery()))
-    result = await db.execute(base.order_by(LineItem.created_at).offset(skip).limit(limit))
+    result = await db.execute(
+        base.order_by(LineItem.created_at, LineItem.id).offset(skip).limit(limit)
+    )
     return list(result.scalars().all()), total or 0
 
 

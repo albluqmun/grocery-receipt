@@ -28,12 +28,16 @@ async def get_list(
     stmt = select(Product)
     count_stmt = select(func.count()).select_from(Product)
     if q and q.strip():
-        pattern = f"%{q.strip()}%"
-        condition = or_(Product.name.ilike(pattern), Product.off_name.ilike(pattern))
+        escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        condition = or_(
+            Product.name.ilike(pattern, escape="\\"),
+            Product.off_name.ilike(pattern, escape="\\"),
+        )
         stmt = stmt.where(condition)
         count_stmt = count_stmt.where(condition)
     total = await db.scalar(count_stmt)
-    result = await db.execute(stmt.order_by(Product.name).offset(skip).limit(limit))
+    result = await db.execute(stmt.order_by(Product.name, Product.id).offset(skip).limit(limit))
     return list(result.scalars().all()), total or 0
 
 
