@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_gemini
 from app.api.exceptions import not_found
+from app.core.config import settings
 from app.core.database import get_db
 from app.schemas.pagination import PaginatedResponse
 from app.schemas.receipt import ReceiptUploadResponse
@@ -23,6 +24,21 @@ from app.services.receipt import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
+
+_READ_CHUNK = 64 * 1024
+
+
+async def _read_limited(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an upload in chunks, raising 413 as soon as it exceeds max_bytes."""
+    buffer = bytearray()
+    while chunk := await file.read(_READ_CHUNK):
+        buffer.extend(chunk)
+        if len(buffer) > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"El archivo supera el tamaño máximo de {max_bytes // (1024 * 1024)} MB",
+            )
+    return bytes(buffer)
 
 
 @router.post(
@@ -42,7 +58,7 @@ async def upload_ticket(
             detail="Solo se aceptan archivos PDF",
         )
 
-    pdf_bytes = await file.read()
+    pdf_bytes = await _read_limited(file, settings.max_upload_bytes)
 
     validation_error = validate_pdf_bytes(pdf_bytes)
     if validation_error:

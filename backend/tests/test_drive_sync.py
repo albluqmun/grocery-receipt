@@ -200,7 +200,8 @@ async def test_sync_rate_limit_error(
     body = resp.json()
     assert body["files_error"] == 1
     assert body["results"][0]["error_code"] == "rate_limit"
-    assert "Resource exhausted" in body["results"][0]["error_detail"]
+    # Upstream Gemini message must not leak to the client
+    assert "Resource exhausted" not in body["results"][0]["error_detail"]
 
 
 @patch(f"{_SVC}.extract_receipt_from_pdf", new_callable=AsyncMock)
@@ -310,3 +311,49 @@ async def test_sync_batch_limit(
     # Oldest first after reverse, so ticket1 is processed
     assert body["results"][0]["file_name"] == "ticket1.pdf"
     assert mock_download.call_count == 1
+
+
+@patch(f"{_SVC}.extract_receipt_from_pdf", new_callable=AsyncMock)
+@patch(f"{_SVC}.download_file", new_callable=AsyncMock)
+@patch(f"{_SVC}.list_pdf_files", new_callable=AsyncMock)
+async def test_sync_skips_oversized_file_without_downloading(
+    mock_list: AsyncMock,
+    mock_download: AsyncMock,
+    mock_extract: AsyncMock,
+    client: AsyncClient,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "max_upload_bytes", 1000)
+    mock_list.return_value = [DriveFile(id="drive-big", name="big.pdf", size=1001)]
+
+    resp = await client.post(f"{BASE}/sync")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["files_skipped"] == 1
+    assert body["files_error"] == 0
+    assert body["results"][0]["status"] == "skipped"
+    assert body["results"][0]["error_code"] == "file_too_large"
+    mock_download.assert_not_called()
+    mock_extract.assert_not_called()
+
+
+@patch(f"{_SVC}.extract_receipt_from_pdf", new_callable=AsyncMock)
+@patch(f"{_SVC}.download_file", new_callable=AsyncMock)
+@patch(f"{_SVC}.list_pdf_files", new_callable=AsyncMock)
+async def test_sync_gemini_error_does_not_leak_message(
+    mock_list: AsyncMock,
+    mock_download: AsyncMock,
+    mock_extract: AsyncMock,
+    client: AsyncClient,
+):
+    mock_list.return_value = [DriveFile(id="drive-1", name="ticket1.pdf")]
+    mock_download.return_value = unique_pdf()
+    from google.genai.errors import APIError as GeminiAPIError
+
+    mock_extract.side_effect = GeminiAPIError(500, {"message": "internal secret detail"})
+
+    resp = await client.post(f"{BASE}/sync")
+
+    detail = resp.json()["results"][0]["error_detail"]
+    assert "internal secret detail" not in detail

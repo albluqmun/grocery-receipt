@@ -16,6 +16,7 @@ from app.api.products import router as products_router
 from app.api.supermarkets import router as supermarkets_router
 from app.api.tickets import router as tickets_router
 from app.core.config import settings
+from app.core.security import validate_security_settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ def _run_migrations() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    validate_security_settings(settings)
     await asyncio.to_thread(_run_migrations)
     logger.info("Database migrations applied")
     yield
@@ -62,9 +64,6 @@ app.include_router(categories_router, prefix="/api/v1")
 app.include_router(products_router, prefix="/api/v1")
 app.include_router(tickets_router, prefix="/api/v1")
 app.include_router(google_drive_router, prefix="/api/v1")
-
-if not settings.api_key:
-    logger.warning("API_KEY not set — API is unauthenticated (dev mode)")
 
 if not settings.gemini_api_key:
     logger.warning("GEMINI_API_KEY not set — PDF ticket extraction will be unavailable")

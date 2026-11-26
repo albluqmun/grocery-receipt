@@ -11,12 +11,14 @@ class DriveFile(BaseModel):
 
     id: str
     name: str
+    size: int | None = None
 
 
 class SyncFileStatus(StrEnum):
     PROCESSED = "processed"
     DUPLICATE = "duplicate"
     ERROR = "error"
+    SKIPPED = "skipped"
 
 
 class SyncErrorCode(StrEnum):
@@ -25,6 +27,7 @@ class SyncErrorCode(StrEnum):
     GEMINI_ERROR = "gemini_error"
     PARSE_ERROR = "parse_error"
     INTERNAL_ERROR = "internal_error"
+    FILE_TOO_LARGE = "file_too_large"
 
 
 class DriveSyncFileResult(BaseModel):
@@ -57,6 +60,6 @@ class DriveSyncResponse(BaseModel):
             files_processed=counts[SyncFileStatus.PROCESSED],
             files_duplicate=counts[SyncFileStatus.DUPLICATE],
             files_error=counts[SyncFileStatus.ERROR],
-            files_skipped=files_skipped,
+            files_skipped=files_skipped + counts[SyncFileStatus.SKIPPED],
             results=results,
         )

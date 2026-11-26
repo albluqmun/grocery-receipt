@@ -101,7 +101,8 @@ async def extract_receipt_from_pdf(pdf_bytes: bytes) -> ExtractedReceipt:
     try:
         result = ExtractedReceipt.model_validate_json(raw_json)
     except ValidationError as exc:
-        logger.error("Failed to parse Gemini response: %s\nRaw JSON: %s", exc, raw_json)
+        logger.error("Failed to parse Gemini response: %s", exc)
+        logger.debug("Raw Gemini JSON: %s", raw_json)
         raise ReceiptParseError(str(exc)) from exc
     logger.info(
         "Gemini extracted: supermarket=%s, date=%s, total=%s, line_items=%d",
@@ -167,5 +168,6 @@ async def match_products_with_off(
         logger.warning("Gemini API error during OFF matching", exc_info=True)
         return {}
     except (json.JSONDecodeError, ValueError):
-        logger.error("Failed to parse Gemini matching response: %s", response.text)
+        logger.error("Failed to parse Gemini matching response")
+        logger.debug("Raw Gemini matching response: %s", response.text)
         return {}

@@ -170,3 +170,24 @@ async def test_duplicate_same_invoice_different_pdf(mock_extract: AsyncMock, cli
     assert resp2.status_code == 200
     assert resp2.json()["duplicate"] is True
     assert resp2.json()["ticket_id"] == resp1.json()["ticket_id"]
+
+
+async def test_upload_too_large_returns_413(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "fake-key")
+    monkeypatch.setattr(settings, "max_upload_bytes", 1024)
+    payload = b"%PDF-1.4 " + b"x" * 2048
+    resp = await client.post(
+        f"{BASE}/upload", files={"file": ("big.pdf", payload, "application/pdf")}
+    )
+    assert resp.status_code == 413
+    assert "tamaño máximo" in resp.json()["detail"]
+
+
+@patch("app.api.tickets.extract_receipt_from_pdf", new_callable=AsyncMock)
+async def test_upload_gemini_error_does_not_leak_message(
+    mock_extract: AsyncMock, client: AsyncClient
+):
+    mock_extract.side_effect = GeminiAPIError(code=500, response_json={"message": "secret-detail"})
+    resp = await client.post(f"{BASE}/upload", files=_pdf_upload())
+    assert resp.status_code == 502
+    assert "secret-detail" not in resp.text
