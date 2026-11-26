@@ -82,7 +82,7 @@ async def add_category_to_product(
 
     await db.refresh(product, ["categories"])
     if category in product.categories:
-        raise conflict("El producto ya tiene esta categoría asignada") from None
+        raise conflict("El producto ya tiene esta categoría asignada")
 
     product.categories.append(category)
     await db.flush()
