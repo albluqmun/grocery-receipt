@@ -5,8 +5,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-grocery}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-grocery_dev}
       POSTGRES_DB: ${POSTGRES_DB:-grocery_receipt}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro
@@ -20,6 +18,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
     ports:
       - "8000:8000"
     env_file:
@@ -32,14 +32,24 @@ services:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+  # Publishes Postgres on localhost only when running with `--profile dev`
+  db-expose:
+    image: alpine/socat:latest
+    profiles: ["dev"]
+    command: TCP-LISTEN:5432,fork,reuseaddr TCP:db:5432
+    ports:
+      - "127.0.0.1:5432:5432"
+    depends_on:
+      - db
+
   pgadmin:
     image: dpage/pgadmin4:latest
-    profiles: ["debug"]
+    profiles: ["dev"]
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@local.dev
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - "5050:80"
+      - "127.0.0.1:5050:80"
     depends_on:
       - db
 

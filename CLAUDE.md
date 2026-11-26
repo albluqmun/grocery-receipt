@@ -24,8 +24,8 @@ Backend sigue patrón service layer:
 cp .env.example .env
 docker compose up --build          # API en :8000, swagger en :8000/swagger
 
-# Con pgAdmin
-docker compose --profile debug up  # pgAdmin en :5050
+# Con herramientas de desarrollo (Postgres expuesto + pgAdmin)
+docker compose --profile dev up    # además expone Postgres en :5432 y pgAdmin en :5050 (solo localhost)
 
 # Tests
 docker compose exec api pytest
