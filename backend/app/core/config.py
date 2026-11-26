@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     gemini_batch_limit: int = 0
     api_key: str = ""
     cors_origins: str = ""
+    max_upload_bytes: int = 10 * 1024 * 1024
 
     model_config = {"env_file": ".env"}
 

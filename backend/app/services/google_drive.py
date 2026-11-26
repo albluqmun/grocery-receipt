@@ -56,7 +56,7 @@ def _list_pdf_files_sync(folder_id: str) -> list[DriveFile]:
             service.files()
             .list(
                 q=query,
-                fields="nextPageToken, files(id, name)",
+                fields="nextPageToken, files(id, name, size)",
                 orderBy="createdTime desc",
                 pageSize=100,
                 pageToken=page_token,
@@ -64,7 +64,8 @@ def _list_pdf_files_sync(folder_id: str) -> list[DriveFile]:
             .execute()
         )
         for f in response.get("files", []):
-            files.append(DriveFile(id=f["id"], name=f["name"]))
+            size = int(f["size"]) if "size" in f else None
+            files.append(DriveFile(id=f["id"], name=f["name"], size=size))
 
         page_token = response.get("nextPageToken")
         if not page_token:
@@ -95,9 +96,25 @@ async def download_file(file_id: str) -> bytes:
     return await asyncio.to_thread(_download_file_sync, file_id)
 
 
+def _too_large_result(df: DriveFile, max_bytes: int) -> DriveSyncFileResult:
+    return DriveSyncFileResult(
+        file_name=df.name,
+        status=SyncFileStatus.SKIPPED,
+        error_code=SyncErrorCode.FILE_TOO_LARGE,
+        error_detail=f"El archivo supera el tamaño máximo de {max_bytes // (1024 * 1024)} MB",
+    )
+
+
 async def _process_single_file(db: AsyncSession, df: DriveFile) -> DriveSyncFileResult:
     """Download, validate, extract, and persist a single Drive PDF."""
+    max_bytes = settings.max_upload_bytes
+    if df.size is not None and df.size > max_bytes:
+        logger.warning("Skipping '%s' (id=%s): %d bytes exceeds limit", df.name, df.id, df.size)
+        return _too_large_result(df, max_bytes)
+
     pdf_bytes = await download_file(df.id)
+    if len(pdf_bytes) > max_bytes:
+        return _too_large_result(df, max_bytes)
 
     validation_error = validate_pdf_bytes(pdf_bytes)
     if validation_error:
@@ -161,15 +178,15 @@ async def sync_drive_folder(db: AsyncSession) -> DriveSyncResponse:
                 file_name=df.name,
                 status=SyncFileStatus.ERROR,
                 error_code=error_code,
-                error_detail=exc.message or str(exc),
+                error_detail="Error en el servicio de extracción",
             )
-        except ReceiptParseError as exc:
+        except ReceiptParseError:
             logger.exception("Parse error for '%s' (id=%s)", df.name, df.id)
             result = DriveSyncFileResult(
                 file_name=df.name,
                 status=SyncFileStatus.ERROR,
                 error_code=SyncErrorCode.PARSE_ERROR,
-                error_detail=str(exc),
+                error_detail="No se pudo extraer datos del ticket",
             )
         except Exception:
             logger.exception("Unexpected error for '%s' (id=%s)", df.name, df.id)
