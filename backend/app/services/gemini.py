@@ -153,6 +153,7 @@ async def match_products_with_off(
         supermarket_hint=supermarket_hint, products_block=products_block
     )
 
+    response = None
     try:
         client = _get_client()
         response = await client.aio.models.generate_content(
@@ -162,10 +163,16 @@ async def match_products_with_off(
                 response_mime_type="application/json",
             ),
         )
-        return json.loads(response.text)
+        parsed = json.loads(response.text)
     except GeminiAPIError:
         logger.warning("Gemini API error during OFF matching", exc_info=True)
         return {}
     except (json.JSONDecodeError, ValueError):
-        logger.error("Failed to parse Gemini matching response: %s", response.text)
+        logger.error(
+            "Failed to parse Gemini matching response: %s", response.text if response else None
+        )
         return {}
+    if not isinstance(parsed, dict):
+        logger.error("Gemini matching response is not a JSON object: %r", parsed)
+        return {}
+    return parsed
