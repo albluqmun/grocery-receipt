@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
 OFF_FIELDS = "code,product_name,categories,image_url"
-OFF_USER_AGENT = "GroceryReceiptTracker/1.0 (github.com/aluque/grocery-receipt)"
+OFF_USER_AGENT = "GroceryReceiptTracker/1.0 (github.com/albluqmun/grocery-receipt)"
 OFF_TIMEOUT = 10.0
 _NON_SPANISH_PREFIX_RE = re.compile(r"^[a-z]{2}:")
 _MAX_RETRIES = 3

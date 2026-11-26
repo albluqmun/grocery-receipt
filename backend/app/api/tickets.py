@@ -60,19 +60,19 @@ async def upload_ticket(
 
     try:
         extracted = await extract_receipt_from_pdf(pdf_bytes)
-    except GeminiAPIError:
+    except GeminiAPIError as exc:
         logger.exception("Gemini API error during PDF extraction")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Error en el servicio de extracción. Inténtelo de nuevo más tarde.",
-        )
-    except ReceiptParseError:
+        ) from exc
+    except ReceiptParseError as exc:
         logger.exception("Failed to parse Gemini response")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="No se pudo extraer datos del ticket. "
             "Verifique que el PDF es un ticket de supermercado válido.",
-        )
+        ) from exc
 
     return await process_extracted_receipt(db, extracted, pdf_hash)
 

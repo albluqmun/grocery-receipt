@@ -82,7 +82,7 @@ async def add_category_to_product(
 
     await db.refresh(product, ["categories"])
     if category in product.categories:
-        raise conflict("El producto ya tiene esta categoría asignada")
+        raise conflict("El producto ya tiene esta categoría asignada") from None
 
     product.categories.append(category)
     await db.flush()
@@ -148,6 +148,6 @@ async def delete_product(product_id: uuid.UUID, db: AsyncSession = Depends(get_d
     try:
         deleted = await product_service.delete(db, product_id)
     except IntegrityError:
-        raise conflict("No se puede eliminar: tiene líneas de ticket asociadas")
+        raise conflict("No se puede eliminar: tiene líneas de ticket asociadas") from None
     if not deleted:
         raise not_found("Producto")

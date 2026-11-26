@@ -36,6 +36,6 @@ async def delete_supermarket(supermarket_id: uuid.UUID, db: AsyncSession = Depen
     try:
         deleted = await supermarket_service.delete(db, supermarket_id)
     except IntegrityError:
-        raise conflict("No se puede eliminar: tiene tickets asociados")
+        raise conflict("No se puede eliminar: tiene tickets asociados") from None
     if not deleted:
         raise not_found("Supermercado")
