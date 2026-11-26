@@ -9,8 +9,10 @@ from app.api.exceptions import conflict, not_found
 from app.core.database import get_db
 from app.schemas.enrichment import EnrichmentResult, ResetResult
 from app.schemas.pagination import PaginatedResponse
+from app.schemas.price_history import PriceHistoryEntry
 from app.schemas.product import ProductCategoryAdd, ProductCreate, ProductRead, ProductUpdate
 from app.services import category as category_service
+from app.services import price_history as price_history_service
 from app.services import product as product_service
 from app.services.enrichment import enrich_pending, enrich_products, reset_failed_enrichments
 
@@ -26,9 +28,10 @@ async def create_product(data: ProductCreate, db: AsyncSession = Depends(get_db)
 async def list_products(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    q: str | None = Query(default=None, max_length=200),
     db: AsyncSession = Depends(get_db),
 ):
-    items, total = await product_service.get_list(db, skip=skip, limit=limit)
+    items, total = await product_service.get_list(db, skip=skip, limit=limit, q=q)
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
 
 
@@ -107,6 +110,17 @@ async def remove_category_from_product(
 
     product.categories.remove(category)
     await db.flush()
+
+
+@router.get("/{product_id}/prices", response_model=list[PriceHistoryEntry])
+async def get_product_price_history(
+    product_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    product = await product_service.get_by_id(db, product_id)
+    if not product:
+        raise not_found("Producto")
+    return await price_history_service.get_history(db, product_id)
 
 
 @router.get("/{product_id}", response_model=ProductRead)
